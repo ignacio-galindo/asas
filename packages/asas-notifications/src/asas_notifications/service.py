@@ -276,7 +276,10 @@ def _topic_known(session: Session, topic: str) -> bool:
 @dataclass(frozen=True)
 class _PolicyRow:  # a detached, cache-safe copy of NotificationChannelPolicy
     id: int
-    org_id: Optional[int]
+    #: The host's own org id in storage form, not an int: this is a copy of a
+    #: column that is VARCHAR now. Annotating it ``int`` described a shape this
+    #: has not held since identity became opaque.
+    org_id: Optional[str]
     topic: Optional[str]
     urgency: Optional[str]
     nature: Optional[str]
@@ -285,7 +288,7 @@ class _PolicyRow:  # a detached, cache-safe copy of NotificationChannelPolicy
     mandatory: bool
 
 
-def _policy_rows(session: Session, org: Optional[int]) -> tuple:
+def _policy_rows(session: Session, org: Optional[Any]) -> tuple:
     entry = _policy_cache.get(org)
     if not _fresh(entry):
         rows = session.exec(
@@ -318,7 +321,9 @@ def _policy_rows(session: Session, org: Optional[int]) -> tuple:
 
 def resolve_channels(
     session: Session,
-    org: Optional[int],
+    # The host's own org id, in whatever shape the host's keys take; normalised
+    # on the way into the policy lookup like every other identity argument.
+    org: Optional[Any],
     *,
     topic: str,
     nature: Nature,
@@ -407,7 +412,10 @@ def notify(
     link: Optional[str] = None,
     template: Optional[str] = None,
     data: Optional[dict] = None,
-    actor_user_id: Optional[int] = None,
+    # Any host id, like every other identity argument: this is compared
+    # against the recipient list through ``normalize_id`` and never stored, so a
+    # UUID host excludes its own actor exactly as an int host does.
+    actor_user_id: Optional[Any] = None,
     entity_type: Optional[str] = None,
     entity_id: Optional[Any] = None,
     org_id: Optional[Any] = None,
