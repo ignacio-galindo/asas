@@ -25,7 +25,7 @@ from .schemas import (
 )
 
 
-def _require_recipient(session: Session) -> int:
+def _require_recipient(session: Session) -> str:
     user_id = service.current_user_id(session)
     if user_id is None:
         # An anonymous run (host enforcement off) has no "me" to have a feed.
