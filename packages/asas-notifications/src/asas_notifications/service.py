@@ -282,7 +282,6 @@ class _PolicyRow:  # a detached, cache-safe copy of NotificationChannelPolicy
     org_id: Optional[str]
     topic: Optional[str]
     urgency: Optional[str]
-    nature: Optional[str]
     channel: str
     enabled: bool
     mandatory: bool
@@ -307,7 +306,6 @@ def _policy_rows(session: Session, org: Optional[Any]) -> tuple:
                     org_id=r.org_id,
                     topic=r.topic,
                     urgency=r.urgency.value if r.urgency else None,
-                    nature=r.nature.value if r.nature else None,
                     channel=r.channel,
                     enabled=r.enabled,
                     mandatory=r.mandatory,
@@ -326,44 +324,62 @@ def resolve_channels(
     org: Optional[Any],
     *,
     topic: str,
-    nature: Nature,
     urgency: Urgency,
 ) -> dict[str, bool]:
     """The effective channel set for one emit: ``{channel: mandatory}`` for
     every **enabled** channel.
 
-    Per channel, most specific wins (DR 0003 S-5): a topic row beats an axis
-    row beats the built-in fallback; within a tier an org override row beats a
-    platform row, and an axis row matching more fields beats one matching
-    fewer. The fallback is the pre-0.16 rule in code — ``low`` → in-app only,
-    else in-app + email — so empty policy tables reproduce 0.15 routing
-    exactly. Reason is not a policy condition yet (it joins with U-3's
-    preference layer)."""
+    The policy table is a **(topic × urgency) matrix** with either coordinate
+    optional, and per channel the most specific matching cell wins:
+
+    1. both coordinates match — this topic at this urgency
+    2. topic matches, urgency is NULL — this topic, any urgency
+    3. urgency matches, topic is NULL — any topic at this urgency
+    4. both NULL — the org-wide default row
+    5. no row — the built-in fallback: ``low`` → in-app only, else in-app +
+       email, so empty policy tables reproduce 0.15 routing exactly
+
+    Within a tier an org override row beats a platform row, and a tie between
+    equally specific rows resolves to the NEWEST, so an administrator's latest
+    change takes effect rather than being shadowed by a stale predecessor.
+
+    Tier 1 is new in this release. Until now a CHECK constraint forbade a row
+    from carrying both coordinates, so the matrix was really two independent
+    lists and "this topic, but only when urgent" was unstorable. A topic rule
+    also silently ignored urgency, which meant the closest thing an
+    administrator could write applied far more widely than they intended.
+
+    ``nature`` is not a condition here. It describes what the notification asks
+    of the recipient, which is a different question from how loudly to deliver
+    it, and urgency already answers that one. ``reason`` is not one either — it
+    joins with U-3's preference layer."""
     rows = _policy_rows(session, org)
     channels = {IN_APP, "email"} | {r.channel for r in rows}
+    urgency_value = urgency.value if isinstance(urgency, Urgency) else str(urgency)
     resolved: dict[str, bool] = {}
     for channel in channels:
-        topic_rows = [r for r in rows if r.channel == channel and r.topic == topic and r.topic is not None]
-        axis_rows = [
+        # Every cell whose set coordinates match this emit. A NULL coordinate is
+        # a wildcard, so a row is a candidate unless one of its stated
+        # coordinates disagrees.
+        candidates = [
             r
             for r in rows
             if r.channel == channel
-            and r.topic is None
-            and (r.urgency is None or r.urgency == urgency.value)
-            and (r.nature is None or r.nature == nature.value)
+            and (r.topic is None or r.topic == topic)
+            and (r.urgency is None or r.urgency == urgency_value)
         ]
         pick = None
-        # Ties (equally specific duplicate rows — the table has no uniqueness
-        # constraint) resolve to the NEWEST row: an admin's latest change must
-        # take effect, never be shadowed by a stale predecessor.
-        if topic_rows:
-            pick = max(topic_rows, key=lambda r: (r.org_id is not None, r.id))
-        elif axis_rows:
+        if candidates:
+            # Specificity first (a two-coordinate cell outranks either
+            # one-coordinate rule, which outranks the all-NULL default), then an
+            # org row over a platform row, then the newest id to break a tie
+            # between equally specific rows — the table has no uniqueness
+            # constraint, and an admin's latest change must win.
             pick = max(
-                axis_rows,
+                candidates,
                 key=lambda r: (
+                    (r.topic is not None) + (r.urgency is not None),
                     r.org_id is not None,
-                    (r.urgency is not None) + (r.nature is not None),
                     r.id,
                 ),
             )
@@ -576,7 +592,7 @@ def notify(
     if not ids:
         return []
 
-    resolved = resolve_channels(session, org, topic=topic, nature=nat, urgency=urg)
+    resolved = resolve_channels(session, org, topic=topic, urgency=urg)
     if IN_APP not in resolved:
         # The notification row is both the feed entry and the FK anchor for
         # delivery rows, so "no in_app" means nothing lands anywhere. That is
