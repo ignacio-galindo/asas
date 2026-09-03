@@ -45,7 +45,6 @@ def emit(session, action, recipients, **kw):
     kw.setdefault("topic", "general")
     kw.setdefault("nature", "info")
     kw.setdefault("urgency", "normal")
-    kw.setdefault("reason", "participant")
     kw.setdefault("title", "Hello")
     rows = notifications.notify(session, recipients, action, **kw)
     session.commit()

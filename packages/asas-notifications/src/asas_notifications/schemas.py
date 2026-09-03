@@ -8,7 +8,7 @@ from sqlmodel import SQLModel
 
 from typing import Any
 
-from .models import Nature, Reason, Urgency
+from .models import Nature, Urgency
 
 
 class NotificationRead(SQLModel):
@@ -19,7 +19,6 @@ class NotificationRead(SQLModel):
     topic: Optional[str] = None
     nature: Nature
     urgency: Urgency
-    reason: Reason
     entity_type: Optional[str] = None
     entity_id: Optional[str] = None
     title: str

@@ -2,7 +2,7 @@
 
 - Producers call ``notify`` inside their own transaction — the insert IS the
   enqueue — passing the **application action** that caused the emit and the
-  four axes (topic/nature/urgency/reason). No registration: the action is a
+  three axes (topic/nature/urgency). No registration: the action is a
   reference, not a declaration; ``register_kind`` survives one release as a
   deprecating shim (DR 0003 I-3).
 - Routing resolves per channel, most specific wins: topic policy row → axis
@@ -43,7 +43,6 @@ from .models import (
     NotificationChannelPolicy,
     NotificationDelivery,
     NotificationTopic,
-    Reason,
     Urgency,
 )
 
@@ -67,7 +66,6 @@ DEFAULT_TOPIC = "general"
 class KindSpec:
     category: Nature  # field name kept for one release — hosts introspect it
     urgency: Urgency
-    reason: Reason
     topic: str = DEFAULT_TOPIC
 
 
@@ -79,7 +77,9 @@ def register_kind(
     *,
     category: Nature,
     urgency: Urgency,
-    reason: Reason,
+    # Accepted and ignored: ``reason`` is no longer stored, and a 0.15 wiring
+    # that still passes it must keep working for this shim's last release.
+    reason: Any = None,
     topic: str = DEFAULT_TOPIC,
 ) -> None:
     """DEPRECATED (DR 0003): the kind catalog is gone — pass the action and the
@@ -89,11 +89,11 @@ def register_kind(
     ``general`` topic so a legacy emit always passes topic validation."""
     warnings.warn(
         "register_kind() is deprecated: pass action= and the four axes "
-        "(topic/nature/urgency/reason) on notify() instead (DR 0003)",
+        "(topic/nature/urgency) on notify() instead (DR 0003)",
         DeprecationWarning,
         stacklevel=2,
     )
-    _KINDS[kind] = KindSpec(Nature(category), Urgency(urgency), Reason(reason), topic)
+    _KINDS[kind] = KindSpec(Nature(category), Urgency(urgency), topic)
 
 
 def registered_kinds() -> dict[str, KindSpec]:
@@ -351,8 +351,7 @@ def resolve_channels(
 
     ``nature`` is not a condition here. It describes what the notification asks
     of the recipient, which is a different question from how loudly to deliver
-    it, and urgency already answers that one. ``reason`` is not one either — it
-    joins with U-3's preference layer."""
+    it, and urgency already answers that one."""
     rows = _policy_rows(session, org)
     channels = {IN_APP, "email"} | {r.channel for r in rows}
     urgency_value = urgency.value if isinstance(urgency, Urgency) else str(urgency)
@@ -422,7 +421,6 @@ def notify(
     topic: Optional[str] = None,
     nature: Optional[Nature] = None,
     urgency: Optional[Urgency] = None,
-    reason: Optional[Reason] = None,
     title: Optional[str] = None,
     body: Optional[str] = None,
     link: Optional[str] = None,
@@ -502,21 +500,20 @@ def notify(
         action is not None
         and nature is None
         and urgency is None
-        and reason is None
         and topic is None
         and (spec := _KINDS.get(action)) is not None
     ):
         warnings.warn(
             f"notify({action!r}) is using register_kind() defaults — pass the "
-            "four axes explicitly; the kind shim goes away next release (DR 0003)",
+            "axes explicitly; the kind shim goes away next release (DR 0003)",
             DeprecationWarning,
             stacklevel=2,
         )
-        nature, urgency, reason, topic = spec.category, spec.urgency, spec.reason, spec.topic
+        nature, urgency, topic = spec.category, spec.urgency, spec.topic
 
     missing = [
         name
-        for name, value in (("nature", nature), ("urgency", urgency), ("reason", reason))
+        for name, value in (("nature", nature), ("urgency", urgency))
         if value is None
     ]
     if missing:
@@ -535,7 +532,6 @@ def notify(
         raise TypeError("notify() requires title= (template rendering lands with U-4)")
     nat = Nature(nature)
     urg = Urgency(urgency)
-    rsn = Reason(reason)
 
     # The one reference an emit can get wrong that management depends on:
     # policy rows and (U-3) preferences key on topic, so an unknown topic is a
@@ -675,7 +671,6 @@ def notify(
             topic=topic,
             nature=nat,
             urgency=urg,
-            reason=rsn,
             entity_type=entity_type,
             entity_id=normalize_id(entity_id),
             title=title,
@@ -937,7 +932,6 @@ def dispatch_pending(engine, *, limit: int = 100) -> int:
                 _notification_t.c.topic,
                 _notification_t.c.nature,
                 _notification_t.c.urgency,
-                _notification_t.c.reason,
                 _notification_t.c.title,
                 _notification_t.c.body,
                 _notification_t.c.link,
@@ -990,7 +984,6 @@ def dispatch_pending(engine, *, limit: int = 100) -> int:
             topic=r.topic,
             nature=r.nature,
             urgency=r.urgency,
-            reason=r.reason,
             title=r.title,
             body=r.body,
             link=r.link,

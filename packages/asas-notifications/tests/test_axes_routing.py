@@ -25,7 +25,6 @@ def emit_axes(session, recipients, action, **kw):
     kw.setdefault("topic", "general")
     kw.setdefault("nature", "info")
     kw.setdefault("urgency", "normal")
-    kw.setdefault("reason", "participant")
     kw.setdefault("title", "Hello")
     rows = notifications.notify(session, recipients, action, **kw)
     session.commit()
@@ -58,11 +57,11 @@ def deliveries(session, notification_id):
 def test_axes_emit_persists_everything(session):
     n = emit_axes(
         session, [1], "job.publish",
-        nature="action", urgency="high", reason="requested",
+        nature="action", urgency="high",
         template="job_published", data={"job_title": "Analyst"},
     )[0]
-    assert (n.action, n.topic, n.nature, n.urgency, n.reason) == (
-        "job.publish", "general", "action", "high", "requested",
+    assert (n.action, n.topic, n.nature, n.urgency) == (
+        "job.publish", "general", "action", "high",
     )
     assert n.template == "job_published" and n.data == {"job_title": "Analyst"}
 
@@ -92,19 +91,19 @@ def test_coalesce_keys_on_action_and_keeps_latest_data(session):
 
 # The Teamy reference catalog (adoption guide §6.2) mapped to axes.
 TEAMY = [
-    ("workflow.request_approval", "approvals", "action", "normal", "participant"),
-    ("workflow.request_info", "approvals", "action", "normal", "requested"),
-    ("workflow.provide_info", "approvals", "action", "normal", "participant"),
-    ("workflow.decide", "approvals", "info", "normal", "requested"),
-    ("team.add_member", "system", "info", "normal", "participant"),
-    ("comment.mention", "mentions", "info", "normal", "requested"),
-    ("work_item.assign", "assignments", "info", "normal", "requested"),
-    ("work_item.update", "activity", "info", "low", "participant"),
-    ("work_item.comment", "activity", "info", "low", "participant"),
-    ("wiki_page.comment", "activity", "info", "low", "participant"),
-    ("verification.complete", "system", "info", "normal", "requested"),
-    ("vcs.open_pr", "code", "info", "normal", "participant"),
-    ("vcs.merge_pr", "code", "info", "normal", "participant"),
+    ("workflow.request_approval", "approvals", "action", "normal"),
+    ("workflow.request_info", "approvals", "action", "normal"),
+    ("workflow.provide_info", "approvals", "action", "normal"),
+    ("workflow.decide", "approvals", "info", "normal"),
+    ("team.add_member", "system", "info", "normal"),
+    ("comment.mention", "mentions", "info", "normal"),
+    ("work_item.assign", "assignments", "info", "normal"),
+    ("work_item.update", "activity", "info", "low"),
+    ("work_item.comment", "activity", "info", "low"),
+    ("wiki_page.comment", "activity", "info", "low"),
+    ("verification.complete", "system", "info", "normal"),
+    ("vcs.open_pr", "code", "info", "normal"),
+    ("vcs.merge_pr", "code", "info", "normal"),
 ]
 
 
@@ -115,10 +114,10 @@ def test_empty_tables_reproduce_015_routing_for_the_teamy_catalog(session):
     for topic in {t for _, t, *_ in TEAMY}:
         if topic != "general":
             add_topic(session, topic)
-    for action, topic, nature, urgency, reason in TEAMY:
+    for action, topic, nature, urgency in TEAMY:
         n = emit_axes(
             session, [1], action,
-            topic=topic, nature=nature, urgency=urgency, reason=reason,
+            topic=topic, nature=nature, urgency=urgency,
         )[0]
         expected = [] if urgency == "low" else ["email"]
         assert deliveries(session, n.id) == expected, action
@@ -135,7 +134,7 @@ def test_topic_policy_row_beats_axis_row_and_fallback(session):
     add_policy(session, "email", topic="approvals", enabled=False)
     n = emit_axes(
         session, [1], "workflow.request_approval",
-        topic="approvals", nature="action", urgency="high", reason="participant",
+        topic="approvals", nature="action", urgency="high",
     )[0]
     assert deliveries(session, n.id) == ["teams"]  # email off (topic), teams on (axis)
 
@@ -239,7 +238,7 @@ def test_register_kind_shim_supplies_axes_and_warns(session):
     with pytest.warns(DeprecationWarning, match="register_kind"):
         notifications.register_kind(
             "workflow.approval_requested",
-            category="action", urgency="normal", reason="participant",
+            category="action", urgency="normal",
         )
     rows = notifications.notify(
         session, [1], "workflow.approval_requested", title="Budget change"
@@ -256,15 +255,13 @@ def test_kind_and_category_keyword_aliases_warn_and_map(session):
     with pytest.warns(DeprecationWarning, match="kind"):
         n = notifications.notify(
             session, [1], kind="job.close",
-            topic="general", nature="info", urgency="low",
-            reason="participant", title="x",
+            topic="general", nature="info", urgency="low", title="x",
         )[0]
     assert n.action == "job.close"
     with pytest.warns(DeprecationWarning, match="category"):
         n = notifications.notify(
             session, [1], "job.close",
-            topic="general", category="warning", urgency="low",
-            reason="participant", title="x",
+            topic="general", category="warning", urgency="low", title="x",
         )[0]
     assert n.nature == "warning"
 
@@ -277,7 +274,7 @@ def test_delivery_payload_carries_the_new_vocabulary(migrated, session):
     notifications.register_adapter("email", adapter)
     emit_axes(
         session, [1], "job.publish",
-        nature="action", urgency="high", reason="requested",
+        nature="action", urgency="high",
         data={"job_title": "Analyst"},
     )
     assert notifications.dispatch_pending(migrated) == 1

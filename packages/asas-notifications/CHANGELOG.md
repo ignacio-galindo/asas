@@ -30,6 +30,30 @@ the all-NULL default, that beats the built-in fallback (`low` → in-app only,
 else in-app + email). Org rows still beat platform rows, ties still resolve to
 the newest row.
 
+### `reason` leaves the notification row
+
+It answered "why THIS recipient" — GitHub's participating-vs-watching,
+generalised. It never chose a channel; it was reserved for the preference layer
+(U-3) that was never built. Removed with `nature` so the model carries the two
+axes that decide something (`topic`, `urgency`) plus `nature` for presentation,
+and nothing that decides nothing.
+
+- **`notify()` no longer accepts `reason=`**, and no longer requires it. The
+  required axes are `nature` and `urgency`, plus `topic` whenever `action` is
+  given.
+- **`notification.reason` is dropped** (migration `0008`).
+- **`NotificationRead.reason` and `DeliveryPayload.reason` are gone.** An
+  adapter or client reading either needs a change.
+- `register_kind(reason=…)` still accepts the argument and ignores it, so a 0.15
+  wiring keeps working for this shim's last release.
+
+**What this forecloses.** "Stop emailing me about things I am only watching" was
+the preference this axis existed for. It was never implemented, so nothing
+working breaks — but the option is closed rather than postponed, and re-adding
+the column later cannot reconstruct the value for rows already written. The
+downgrade restores the column and backfills `participant`, which is a default
+and not a recovery.
+
 ### Breaking
 
 - **`resolve_channels` no longer takes `nature=`.** Drop the argument.

@@ -271,8 +271,8 @@ def test_downgrade_0004_backfills_null_actions(engine):
         conn.execute(
             sa.text(
                 "INSERT INTO notification "
-                "(org_id, user_id, action, nature, urgency, reason, title, created_at) "
-                "VALUES (1, 1, NULL, 'info', 'low', 'participant', 'ad hoc', '2026-01-01')"
+                "(org_id, user_id, action, nature, urgency, title, created_at) "
+                "VALUES (1, 1, NULL, 'info', 'low', 'ad hoc', '2026-01-01')"
             )
         )
     command.downgrade(_config(engine), "0003")

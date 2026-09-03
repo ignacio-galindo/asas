@@ -70,14 +70,6 @@ class Urgency(str, Enum):
     high = "high"
 
 
-class Reason(str, Enum):
-    """Why THIS recipient (GitHub participating-vs-watching, generalized)."""
-
-    requested = "requested"
-    participant = "participant"
-    watching = "watching"
-
-
 class DeliveryStatus(str, Enum):
     pending = "pending"
     sending = "sending"  # claimed by a dispatch pass (TEAMY-475); stale claims reclaim
@@ -137,9 +129,6 @@ class Notification(SQLModel, table=True):
     )
     urgency: Urgency = Field(
         sa_column=Column(SAEnum(Urgency, native_enum=False), nullable=False)
-    )
-    reason: Reason = Field(
-        sa_column=Column(SAEnum(Reason, native_enum=False), nullable=False)
     )
     # Generic subject reference (never an FK — the package is entity-agnostic).
     entity_type: Optional[str] = None
