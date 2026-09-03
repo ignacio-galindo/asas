@@ -43,7 +43,6 @@ class DeliveryPayload:
     topic: Optional[str]
     nature: str
     urgency: str
-    reason: str
     title: str
     body: Optional[str]
     link: Optional[str]

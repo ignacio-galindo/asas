@@ -56,34 +56,29 @@ def _dialect() -> str:
     return op.get_bind().dialect.name
 
 
-def _columns_only(conn, keep: "set[str] | None" = None) -> sa.Table:
-    """The live table described by its COLUMNS alone, for a SQLite rebuild.
+def _live_without_checks(conn, table: str) -> sa.Table:
+    """The live table, reflected WITH its indexes, minus its CHECK constraints.
 
-    Two traps, both of which produce a failed CREATE rather than a wrong result,
-    so they are cheap to hit and cheap to miss in review:
+    Three requirements collide on the SQLite rebuild path, and getting any one
+    wrong fails loudly except the third, which fails silently:
 
     * describing the new table from the MODEL selects columns the old table has
-      and the new one does not, so the copy step fails;
-    * describing it from plain reflection carries the old CHECK along, and that
-      CHECK names ``nature`` — SQLite validates a CHECK expression against the
-      new table's columns as it creates it, so a rebuild that drops the column
-      is rejected by the constraint mentioning it.
+      and the new one does not, so the copy step errors;
+    * carrying a reflected CHECK along breaks the CREATE when that CHECK names
+      the column being dropped — SQLite validates the expression against the new
+      table's columns as it creates them;
+    * describing the table by its COLUMNS ALONE loses every index, and a rebuild
+      that quietly drops the feed indexes is a performance regression nothing
+      would notice until production.
 
-    Reflecting the columns and deliberately dropping every constraint avoids
-    both: the rebuild describes what is really there, minus the constraint this
-    migration exists to remove.
+    So: reflect everything (columns, primary key, indexes), then discard only
+    the CHECKs.
     """
-    live = sa.Table(_TABLE, sa.MetaData(), autoload_with=conn)
-    return sa.Table(
-        _TABLE,
-        sa.MetaData(),
-        *[
-            sa.Column(c.name, c.type, primary_key=c.primary_key, nullable=c.nullable)
-            for c in live.columns
-            if keep is None or c.name in keep
-        ],
-    )
-
+    live = sa.Table(table, sa.MetaData(), autoload_with=conn)
+    for constraint in list(live.constraints):
+        if isinstance(constraint, sa.CheckConstraint):
+            live.constraints.discard(constraint)
+    return live
 
 def upgrade() -> None:
     conn = op.get_bind()
@@ -120,7 +115,7 @@ def upgrade() -> None:
         #
         # Rebuilding also discards the old CHECK, which is the second half of
         # this migration and needs no separate statement here.
-        with op.batch_alter_table(_TABLE, schema=None, copy_from=_columns_only(conn)) as batch:
+        with op.batch_alter_table(_TABLE, schema=None, copy_from=_live_without_checks(conn, _TABLE)) as batch:
             batch.drop_column("nature")
     else:
         op.execute(f"ALTER TABLE {_TABLE} DROP CONSTRAINT IF EXISTS {_CHECK}")
@@ -150,7 +145,7 @@ def downgrade() -> None:
 
     nature = sa.Enum("action", "info", name="nature", native_enum=False)
     if _dialect() == "sqlite":
-        with op.batch_alter_table(_TABLE, schema=None, copy_from=_columns_only(conn)) as batch:
+        with op.batch_alter_table(_TABLE, schema=None, copy_from=_live_without_checks(conn, _TABLE)) as batch:
             batch.add_column(sa.Column("nature", nature, nullable=True))
             batch.create_check_constraint(
                 _CHECK,

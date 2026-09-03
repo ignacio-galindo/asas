@@ -38,7 +38,6 @@ _SENTINEL_COLUMNS = frozenset({
     "org_id",
     "user_id",
     "urgency",
-    "reason",
     "entity_type",
     "entity_id",
     "title",
