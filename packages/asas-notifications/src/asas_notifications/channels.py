@@ -29,8 +29,10 @@ class DeliveryPayload:
     delivery_id: int
     notification_id: int
     channel: str
-    recipient_user_id: int
-    org_id: int
+    #: The host's own identity strings, not integers: an adapter that looks a
+    #: user up by integer primary key coerces on its own side.
+    recipient_user_id: str
+    org_id: str
     kind: str
     category: str
     urgency: str

@@ -5,6 +5,21 @@
 later) — one row per (notification, channel) the routing policy selects at emit
 time. Enums are plain VARCHARs (``native_enum=False``, dual-engine rule).
 
+**Identity columns are opaque strings.** ``org_id``, ``user_id`` and
+``entity_id`` used to be ``int``. That reads as decoupling and is not: an integer
+column is an assertion about the host's schema, namely that it numbers its users
+and organisations sequentially. A host on UUID primary keys had nothing to put
+there and no seam that widened it, so it could not adopt the package at all.
+
+The package never interprets these values. It groups, filters and compares them,
+all of which text does, so they are stored as VARCHAR and normalised at the
+boundary by ``normalize_id``. An int host keeps passing ints and reads back their
+decimal string; a UUID host passes its own keys. The visibility filter and the
+context resolver are deliberately unaffected, because they are handed the host's
+own values rather than the storage form: a filter written against ints that
+silently stops dropping anyone is a leak, and that is the one failure the seam
+exists to prevent.
+
 ``org_id`` follows the tenancy epic's mapping (WXL-218): notifications are tenant
 data — org-scoped in the catalog, stamped from the producing request's context.
 """
@@ -77,8 +92,18 @@ class Notification(SQLModel, table=True):
     )
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    org_id: int = Field(index=True)  # no host FK — plain int (extraction rule)
-    user_id: int  # the recipient (no host FK); indexed via the composites above
+    # Opaque host identity. No host FK, and deliberately no assertion about the
+    # host's key TYPE either: see the module docstring. ``normalize_id`` in
+    # service.py is the one place a value becomes one of these, and nothing in
+    # the package parses them.
+    #
+    # 255 and not 64: a UUID is 36 characters, but a host whose principal
+    # subject is an EMAIL can reach 254 (RFC 5321), and a column that truncates
+    # or rejects a recipient is worse than a wide one. Postgres varchar stores
+    # only what is present, so the declared bound costs nothing for short
+    # values, including an int host's decimal strings.
+    org_id: str = Field(index=True, max_length=255)
+    user_id: str = Field(max_length=255)  # the recipient; indexed via the composites above
     kind: str = Field(index=True)  # e.g. "workflow.approval_requested"
     category: Category = Field(
         sa_column=Column(SAEnum(Category, native_enum=False), nullable=False)
@@ -91,7 +116,7 @@ class Notification(SQLModel, table=True):
     )
     # Generic subject reference (never an FK — the package is entity-agnostic).
     entity_type: Optional[str] = None
-    entity_id: Optional[int] = None
+    entity_id: Optional[str] = Field(default=None, max_length=255)
     title: str
     body: Optional[str] = None
     link: Optional[str] = None  # frontend deep link, e.g. "/teams/42"

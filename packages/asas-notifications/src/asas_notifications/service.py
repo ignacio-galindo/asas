@@ -72,7 +72,7 @@ def registered_kinds() -> dict[str, KindSpec]:
 # ── app seams (wired in notifications_wiring.py) ─────────────────────────────
 
 # (session) -> (user_id, org_id) of the current request, or None outside one.
-_context_resolver: Optional[Callable[[Session], Optional[tuple[int, int]]]] = None
+_context_resolver: Optional[Callable[[Session], Optional[tuple[Any, Any]]]] = None
 # (session, user_ids, entity_type, entity_id, record) -> user_ids allowed to
 # know the subject exists. `record` is None when the producer did not have the
 # row; the id is always passed so the filter can resolve it itself.
@@ -114,12 +114,12 @@ def configure_recipient_filter(
     _recipient_filter = fn
 
 
-def current_user_id(session: Session) -> Optional[int]:
+def current_user_id(session: Session) -> Optional[Any]:
     ctx = _context_resolver(session) if _context_resolver else None
     return ctx[0] if ctx else None
 
 
-def current_org_id(session: Session) -> Optional[int]:
+def current_org_id(session: Session) -> Optional[Any]:
     """The request's org, when a context resolver is configured and inside a
     request. Feed/read/archive queries constrain on it *in addition to*
     ``user_id`` — defense in depth for multi-tenant hosts: host-level tenancy
@@ -130,14 +130,35 @@ def current_org_id(session: Session) -> Optional[int]:
     return ctx[1] if ctx else None
 
 
-def _recipient_conditions(session: Session, user_id: int) -> list:
+def normalize_id(value: Any) -> Optional[str]:
+    """A host identity value as the package stores it, or ``None``.
+
+    The one place a host's id becomes the package's storage form. Nothing here
+    parses these values: they are grouped, filtered and compared, all of which
+    text does, so the columns are VARCHAR and this is the only coercion.
+
+    An int host passes ints and reads back their decimal string; a UUID host
+    passes its own keys and reads them back unchanged. ``None`` stays ``None``,
+    because an absent entity id is absent rather than the string "None".
+
+    Applied at the STORAGE boundary and deliberately nowhere else. The
+    visibility filter and the context resolver are handed the host's own values,
+    not these: a filter written against ints that silently stops dropping
+    anyone is a leak, and that is the one failure the seam exists to prevent.
+    """
+    if value is None:
+        return None
+    return str(value)
+
+
+def _recipient_conditions(session: Session, user_id: Any) -> list:
     """THE tenancy chokepoint: every recipient-facing query builds its WHERE
     from this list, so the org guard cannot be forgotten at one site. Keep new
     feed/count/bulk queries on it."""
-    conditions = [Notification.user_id == user_id]
+    conditions = [Notification.user_id == normalize_id(user_id)]
     org_id = current_org_id(session)
     if org_id is not None:
-        conditions.append(Notification.org_id == org_id)
+        conditions.append(Notification.org_id == normalize_id(org_id))
     return conditions
 
 
@@ -175,16 +196,16 @@ def suppressed():
 
 def notify(
     session: Session,
-    recipients: Iterable[int],
+    recipients: Iterable[Any],
     kind: str,
     *,
     title: str,
-    actor_user_id: Optional[int] = None,
+    actor_user_id: Optional[Any] = None,
     body: Optional[str] = None,
     link: Optional[str] = None,
     entity_type: Optional[str] = None,
-    entity_id: Optional[int] = None,
-    org_id: Optional[int] = None,
+    entity_id: Optional[Any] = None,
+    org_id: Optional[Any] = None,
     record: Any = None,
     category: Optional[Category] = None,
     urgency: Optional[Urgency] = None,
@@ -246,7 +267,12 @@ def notify(
 
     ids = list(dict.fromkeys(u for u in recipients if u is not None))
     if actor_user_id is not None:
-        ids = [u for u in ids if u != actor_user_id]
+        # Compared through the storage form, so a host that hands the actor over
+        # in one shape and the recipients in another (a UUID object against its
+        # string, say) still excludes them. Comparing raw would silently notify
+        # somebody of their own action, which is the invariant this line IS.
+        actor = normalize_id(actor_user_id)
+        ids = [u for u in ids if normalize_id(u) != actor]
     if record is not None and not entity_type and _recipient_filter is not None:
         # "must never leak a private record" is only enforceable when the
         # filter can actually run. A record without its entity_type used to
@@ -290,16 +316,16 @@ def notify(
             existing = session.exec(
                 select(Notification)
                 .where(
-                    Notification.user_id == user_id,
+                    Notification.user_id == normalize_id(user_id),
                     # The org axis is part of the coalesce identity (DR 0001
                     # T5, defect T-6): where hosts' entity ids are not
                     # globally unique, an org-2 emit must never fold into —
                     # and overwrite — an org-1 row for the same (user, kind,
                     # entity).
-                    Notification.org_id == org,
+                    Notification.org_id == normalize_id(org),
                     Notification.kind == kind,
                     Notification.entity_type == entity_type,
-                    Notification.entity_id == entity_id,
+                    Notification.entity_id == normalize_id(entity_id),
                     Notification.read_at.is_(None),
                     # An archived row has left the recipient's inbox. Folding a
                     # new event into it would update something they can no
@@ -324,14 +350,14 @@ def notify(
     created: list[Notification] = []
     for user_id in ids:
         n = Notification(
-            user_id=user_id,
-            org_id=org,
+            user_id=normalize_id(user_id),
+            org_id=normalize_id(org),
             kind=kind,
             category=cat,
             urgency=urg,
             reason=rsn,
             entity_type=entity_type,
-            entity_id=entity_id,
+            entity_id=normalize_id(entity_id),
             title=title,
             body=body,
             link=link,
@@ -348,7 +374,7 @@ def notify(
 # ── feed / read state ────────────────────────────────────────────────────────
 
 
-def unread_count(session: Session, user_id: int) -> int:
+def unread_count(session: Session, user_id: Any) -> int:
     """Unread rows still in the inbox. Archived rows are excluded — they have left
     the recipient's list, so counting them would leave a badge pointing at nothing.
 
@@ -367,7 +393,7 @@ def unread_count(session: Session, user_id: int) -> int:
 
 def list_feed(
     session: Session,
-    user_id: int,
+    user_id: Any,
     *,
     state: str = "open",
     unread_only: bool = False,
@@ -405,20 +431,25 @@ def list_feed(
     return list(rows), total
 
 
-def _owned(session: Session, user_id: int, notification_id: int) -> Optional[Notification]:
+def _owned(session: Session, user_id: Any, notification_id: int) -> Optional[Notification]:
     """The row, iff it belongs to this recipient — and, when a request context
     supplies an org, to this org. A cross-org id probe answers exactly like a
     missing row (404 at the router), never confirming the row exists."""
     n = session.get(Notification, notification_id)
-    if n is None or n.user_id != user_id:
+    # Compared through the storage form on BOTH sides. This check is in Python
+    # rather than SQL, so it is the one ownership test that does not go through
+    # ``_recipient_conditions``: without normalising here, a host whose resolver
+    # hands over an int gets `'1' != 1` and every read of its own row answers
+    # 404. Which is what this package's own router tests caught.
+    if n is None or n.user_id != normalize_id(user_id):
         return None
     org_id = current_org_id(session)
-    if org_id is not None and n.org_id != org_id:
+    if org_id is not None and n.org_id != normalize_id(org_id):
         return None
     return n
 
 
-def mark_read(session: Session, user_id: int, notification_id: int) -> Optional[Notification]:
+def mark_read(session: Session, user_id: Any, notification_id: int) -> Optional[Notification]:
     """Mark one owned row read (idempotent); None when :func:`_owned` says the
     row is not this recipient's — or, under an org context, not this org's."""
     n = _owned(session, user_id, notification_id)
@@ -432,7 +463,7 @@ def mark_read(session: Session, user_id: int, notification_id: int) -> Optional[
     return n
 
 
-def mark_all_read(session: Session, user_id: int) -> int:
+def mark_all_read(session: Session, user_id: Any) -> int:
     """Every unread row, archived ones included — a superset of what
     :func:`unread_count` counts, so this can never leave the badge non-zero."""
     result = session.execute(
@@ -452,7 +483,7 @@ def mark_all_read(session: Session, user_id: int) -> int:
 # have read it, and clear it only when they act on it or file it away.
 
 
-def archive(session: Session, user_id: int, notification_id: int) -> Optional[Notification]:
+def archive(session: Session, user_id: Any, notification_id: int) -> Optional[Notification]:
     """Idempotent: archiving an archived row is a no-op, not an error.
 
     Sequentially that also keeps the original timestamp; two *concurrent*
@@ -473,7 +504,7 @@ def archive(session: Session, user_id: int, notification_id: int) -> Optional[No
     return n
 
 
-def unarchive(session: Session, user_id: int, notification_id: int) -> Optional[Notification]:
+def unarchive(session: Session, user_id: Any, notification_id: int) -> Optional[Notification]:
     """Back into the inbox. Read state is untouched — the two axes are independent,
     so restoring a row does not make it unread again."""
     n = _owned(session, user_id, notification_id)
@@ -487,7 +518,7 @@ def unarchive(session: Session, user_id: int, notification_id: int) -> Optional[
     return n
 
 
-def archive_read(session: Session, user_id: int) -> int:
+def archive_read(session: Session, user_id: Any) -> int:
     """Bulk "clear what I've dealt with": archives the recipient's read rows and
     leaves unread ones alone. Never archives unread rows — that would hide
     something the recipient has not seen."""

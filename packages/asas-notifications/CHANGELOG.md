@@ -5,6 +5,38 @@ Pre-1.0, a breaking change bumps the **minor**.
 
 Release procedure and the historical tag mapping: [`RELEASING.md`](../../RELEASING.md).
 
+## 0.16.0 — 2026-09-02
+
+Breaking. Identity columns stop asserting the host's key type.
+
+**What a consumer must do differently**
+
+- **`org_id`, `user_id` and `entity_id` are opaque strings.** They were `int`,
+  which reads as decoupling and is not: an integer column is an assertion about
+  the host's schema, namely that it numbers its users and organisations
+  sequentially. A host on UUID primary keys had nothing to put there and no seam
+  widened it, so it could not adopt the package at all. Migration `0004` casts
+  existing values in place and every index keeps its column list and order.
+- **Host code that reads `n.user_id` and compares it to an integer must compare
+  to a string.** An int host keeps PASSING ints (`normalize_id` coerces at the
+  boundary) and reads back their decimal form, so the write path needs no
+  change; only a read that compares does.
+- **Test this on the engine you deploy on.** SQLite's column affinity coerces
+  `user_id == 1` against a text column and keeps working, while Postgres raises
+  `operator does not exist: character varying = integer`. Six tests in this
+  package's own suite were green on SQLite and red on Postgres while this was
+  being written: four from a comparison inside the package that had been missed,
+  and two from the tests' own `where(Notification.user_id == 1)`. A suite that
+  runs only on SQLite will not show you this.
+- **The visibility filter and the context resolver are deliberately
+  unaffected.** They are handed the host's own id values, not the storage form.
+  A filter written against ints that silently stops dropping anyone is a leak,
+  and that is the one failure that seam exists to prevent.
+
+`DeliveryPayload.recipient_user_id` and `.org_id` are strings for the same
+reason: an adapter that looks a user up by integer primary key coerces on its
+own side.
+
 ## 0.15.0 — 2026-08-28
 
 Re-lands the still-open parts of PR #20 (opened against 0.12.0; its emit-side

@@ -16,7 +16,7 @@ class NotificationRead(SQLModel):
     urgency: Urgency
     reason: Reason
     entity_type: Optional[str] = None
-    entity_id: Optional[int] = None
+    entity_id: Optional[str] = None
     title: str
     body: Optional[str] = None
     link: Optional[str] = None
