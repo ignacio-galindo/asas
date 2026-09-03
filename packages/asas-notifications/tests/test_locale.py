@@ -28,7 +28,10 @@ def test_the_resolver_is_asked_per_recipient(session, kind):
     notifications.configure_locale_resolver(lambda s, user_id: languages.get(user_id))
 
     rows = emit(session, kind, [1, 2])
-    assert {r.user_id: r.locale for r in rows} == {1: "ar", 2: "en-GB"}
+    # Keyed by the STORED id, a string once the identity change is in. The
+    # resolver is still handed the host's own value, which is the point of the
+    # seam: it does its own lookup in its own terms.
+    assert {r.user_id: r.locale for r in rows} == {"1": "ar", "2": "en-GB"}
 
 
 def test_a_recipient_the_host_knows_nothing_about_is_not_an_error(session, kind):

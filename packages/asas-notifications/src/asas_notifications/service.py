@@ -292,7 +292,7 @@ def _policy_rows(session: Session, org: Optional[int]) -> tuple:
             select(NotificationChannelPolicy).where(
                 sa_or(
                     NotificationChannelPolicy.org_id.is_(None),
-                    NotificationChannelPolicy.org_id == org,
+                    NotificationChannelPolicy.org_id == normalize_id(org),
                 )
             )
         ).all()
