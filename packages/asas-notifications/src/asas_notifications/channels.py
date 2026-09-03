@@ -49,6 +49,9 @@ class DeliveryPayload:
     link: Optional[str]
     data: Optional[dict]
     created_at: datetime
+    #: The recipient's language, stamped at emit. ``None`` when the host wired
+    #: no locale resolver, which means "render in the deployment default".
+    locale: Optional[str] = None
 
 
 class ChannelAdapter(Protocol):

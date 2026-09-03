@@ -165,6 +165,18 @@ class Notification(SQLModel, table=True):
     # completes. Deliberately unused: Teamy weighed it for TEAMY-692 and chose
     # the archive gesture instead, so nothing writes this column today.
     resolved_at: Optional[datetime] = None
+    #: The recipient's language at emit time, as a BCP-47 tag.
+    #:
+    #: Stamped HERE rather than resolved at dispatch, and that is the whole
+    #: point of the column. ``dispatch_pending`` runs on raw connections outside
+    #: any request, where the context resolver returns ``None`` by contract, so
+    #: a renderer sitting between the outbox and the adapter has nobody to ask
+    #: what language this recipient reads. A product that ships two languages
+    #: needs the answer recorded at the moment the fact happened.
+    #:
+    #: ``None`` means the host wired no resolver, which an adapter should read
+    #: as "render in the deployment default" rather than as an error.
+    locale: Optional[str] = Field(default=None, max_length=16)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
