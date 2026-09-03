@@ -30,6 +30,9 @@ def _clean_registries():
     service._context_resolver = None
     service._recipient_filter = None
     service.config_cache_clear()
+    # A new module-level seam needs a matching reset here, or the first test to
+    # configure it silently changes every test that runs after it.
+    service._locale_resolver = None
 
 
 @pytest.fixture()
