@@ -42,6 +42,7 @@ from .models import (
 from .router import build_router
 from .service import (
     configure_context_resolver,
+    configure_locale_resolver,
     configure_recipient_filter,
     dispatch_pending,
     notify,
@@ -64,6 +65,7 @@ __all__ = [
     "Urgency",
     "build_router",
     "configure_context_resolver",
+    "configure_locale_resolver",
     "configure_recipient_filter",
     "dispatch_pending",
     "migrate",

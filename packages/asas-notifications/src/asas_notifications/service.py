@@ -76,6 +76,10 @@ _context_resolver: Optional[Callable[[Session], Optional[tuple[int, int]]]] = No
 # (session, user_ids, entity_type, entity_id, record) -> user_ids allowed to
 # know the subject exists. `record` is None when the producer did not have the
 # row; the id is always passed so the filter can resolve it itself.
+#: (session, user_id) -> BCP-47 tag, or None. Consulted once per recipient at
+#: emit; see configure_locale_resolver.
+_locale_resolver: Optional[Callable[[Session, Any], Optional[str]]] = None
+
 _recipient_filter: Optional[
     Callable[[Session, Sequence[int], str, Optional[int], Any], Sequence[int]]
 ] = None
@@ -90,6 +94,35 @@ def configure_context_resolver(
     or None``."""
     global _context_resolver
     _context_resolver = fn
+
+
+def configure_locale_resolver(
+    fn: Optional[Callable[[Session, Any], Optional[str]]]
+) -> None:
+    """``(session, user_id) -> language tag``, called per recipient at emit.
+
+    **Why at emit and not at dispatch.** The dispatcher runs on raw connections
+    outside any request: ``current_user_id`` and ``current_org_id`` return
+    ``None`` there by contract, so a renderer between the outbox and an adapter
+    has nobody to ask what language a recipient reads. A notification emitted
+    today and mailed by tomorrow's sweep would render in the deployment default,
+    which for a reader of the other language is simply the wrong email. So the
+    answer is recorded when the fact happens.
+
+    Optional, and a no-op when unconfigured: ``locale`` stays ``NULL`` and an
+    adapter reads that as "deployment default", which is what every host does
+    today. Nothing changes for a single-language deployment.
+
+    **Returning ``None`` for a recipient is fine** and means the same thing. A
+    subject with no account row, or one that has expressed no preference, is not
+    an error; it is a recipient the host has nothing to say about.
+
+    The host is handed its own ``user_id`` value, not the stored form, for the
+    same reason the recipient filter is: this seam is the host's own lookup, and
+    it should not have to know how the package stores an id.
+    """
+    global _locale_resolver
+    _locale_resolver = fn
 
 
 def configure_recipient_filter(
@@ -189,6 +222,7 @@ def notify(
     category: Optional[Category] = None,
     urgency: Optional[Urgency] = None,
     reason: Optional[Reason] = None,
+    locale: Optional[str] = None,
     coalesce_unread: bool = False,
     merge_body: Optional[Callable[[Optional[str], Optional[str]], Optional[str]]] = None,
 ) -> list[Notification]:
@@ -322,8 +356,18 @@ def notify(
             return updated
 
     created: list[Notification] = []
+    def _locale_for(user_id: Any) -> Optional[str]:
+        """Per RECIPIENT, not per emit: one notify can fan out to people who
+        read different languages, so this cannot be hoisted out of the loop."""
+        if locale is not None:
+            return locale
+        if _locale_resolver is None:
+            return None
+        return _locale_resolver(session, user_id)
+
     for user_id in ids:
         n = Notification(
+            locale=_locale_for(user_id),
             user_id=user_id,
             org_id=org,
             kind=kind,
@@ -579,6 +623,7 @@ def dispatch_pending(engine, *, limit: int = 100) -> int:
                 _notification_t.c.title,
                 _notification_t.c.body,
                 _notification_t.c.link,
+                _notification_t.c.locale,
                 _notification_t.c.created_at,
             )
             .select_from(
@@ -630,6 +675,7 @@ def dispatch_pending(engine, *, limit: int = 100) -> int:
             body=r.body,
             link=r.link,
             created_at=r.created_at,
+            locale=r.locale,
         )
         try:
             adapter.send(payload)
