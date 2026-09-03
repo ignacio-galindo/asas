@@ -50,6 +50,32 @@ one-release deprecated alias where the DR promises one.
   the adoption guard recognizes the post-rename schema instead of advising
   the destruction of real data.
 
+### The recipient's language, recorded at emit
+
+- **`configure_locale_resolver(fn)`** is a new host seam, `(session, user_id) ->
+  language tag | None`, asked once per **recipient** at emit. Optional, and a
+  no-op when unconfigured, so nothing changes for a single-language deployment.
+- **`notification.locale`** (migration `0006`) is nullable with no backfill and
+  no default. NULL means the host wired no resolver, which is what every
+  existing row means and what every existing deployment already does.
+- **`notify(..., locale=)`** overrides the resolver, for a producer that already
+  holds the answer or a digest job rendering one language deliberately.
+- **`DeliveryPayload.locale`** carries it to an adapter, and dispatch selects and
+  forwards it. Stamping a value nothing downstream can read would achieve
+  nothing.
+
+**Why at emit and not at dispatch.** `dispatch_pending` runs on raw connections
+outside any request, where the context resolver returns `None` by contract, so a
+renderer between the outbox and an adapter has nobody to ask what language a
+recipient reads. A notification emitted today and mailed by tomorrow's sweep
+would render in the deployment default, which for a reader of the other language
+is simply the wrong email.
+
+**Asked per recipient, not per emit.** One `notify` fans out to people who read
+different languages; resolving once would hand everyone the first recipient's.
+The host receives its own `user_id` value, not the stored form, for the same
+reason the recipient filter does.
+
 ### Identity columns are opaque strings
 
 **What a consumer must do differently**
@@ -57,7 +83,7 @@ one-release deprecated alias where the DR promises one.
   which reads as decoupling and is not: an integer column is an assertion about
   the host's schema, namely that it numbers its users and organisations
   sequentially. A host on UUID primary keys had nothing to put there and no seam
-  widened it, so it could not adopt the package at all. Migration `0004` casts
+  widened it, so it could not adopt the package at all. Migration `0005` casts
   existing values in place and every index keeps its column list and order.
 - **Host code that reads `n.user_id` and compares it to an integer must compare
   to a string.** An int host keeps PASSING ints (`normalize_id` coerces at the
