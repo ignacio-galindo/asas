@@ -50,6 +50,34 @@ one-release deprecated alias where the DR promises one.
   the adoption guard recognizes the post-rename schema instead of advising
   the destruction of real data.
 
+### A host whose keys are not integers is now actually tested
+
+`normalize_id` is the identity function for a value that is already a string, so
+a test that passes a UUID cannot tell a working conversion from a missing one —
+and every test in this package passed integers, which is the case where the
+conversion does something. Two defects reached a consumer through that gap:
+
+- `_owned` compared the stored value against the host's own in Python rather
+  than in SQL, giving `"1" != 1`, so **every** read of a notification answered
+  404 to its own recipient.
+- The coalesce query converted four of its five comparands and not `entity_id`,
+  which SQLite accepted by column affinity and Postgres correctly refused, so a
+  burst stopped folding on the dialect that matters.
+
+Both were fixed when found, and both are pinned: reverting the first fails 16
+tests, the second 6 — the latter **only on Postgres**, which is why the CI matrix
+runs both dialects and why a green SQLite run is not evidence here.
+
+New `test_opaque_identity.py` covers the string-host path itself, which had none:
+ownership, archive, cross-org probes, coalescing and its org axis, the feed and
+unread count, actor exclusion, what reaches an adapter, and the two config
+tables. Plus the int-host contract, stated rather than assumed — an int host
+keeps passing ints and reads back their decimal strings.
+
+Four annotations still said `int` for values that are now the host's own
+identity (`_PolicyRow.org_id`, `_policy_rows`, `resolve_channels`,
+`notify(actor_user_id=)`). No behaviour change; they contradicted the release.
+
 ### The recipient's language, recorded at emit
 
 - **`configure_locale_resolver(fn)`** is a new host seam, `(session, user_id) ->
