@@ -140,17 +140,68 @@ def test_topic_policy_row_beats_axis_row_and_fallback(session):
     assert deliveries(session, n.id) == ["teams"]  # email off (topic), teams on (axis)
 
 
-def test_axis_row_specificity_and_fallback_composition(session):
-    # nature=warning forces email even at low urgency
-    add_policy(session, "email", nature="warning", enabled=True)
-    warning_low = emit_axes(
-        session, [1], "system.alert", nature="warning", urgency="low", title="w",
+def test_a_row_forces_a_channel_the_fallback_would_not(session):
+    """A rule beats the built-in fallback, and only where it applies.
+
+    Rewritten when ``nature`` stopped being a routing condition. It used to
+    discriminate on nature — warning emails even at low urgency, info does not —
+    and that shape is genuinely gone: two low-urgency notifications differing
+    only in nature now route identically. A rule that needs to separate them has
+    to say so with a topic, which is what this does.
+    """
+    add_topic(session, "alerts")
+    add_topic(session, "jobs")
+    add_policy(session, "email", topic="alerts", enabled=True)
+    alert_low = emit_axes(
+        session, [1], "system.alert", topic="alerts", urgency="low", title="w",
     )[0]
-    info_low = emit_axes(
-        session, [1], "job.update", nature="info", urgency="low", title="i",
+    job_low = emit_axes(
+        session, [1], "job.update", topic="jobs", urgency="low", title="i",
     )[0]
-    assert deliveries(session, warning_low.id) == ["email"]  # axis row wins
-    assert deliveries(session, info_low.id) == []            # fallback untouched
+    assert deliveries(session, alert_low.id) == ["email"]  # the row wins
+    assert deliveries(session, job_low.id) == []           # fallback untouched
+
+
+def test_a_topic_and_urgency_cell_beats_either_coordinate_alone(session):
+    """The cell 0.16.0 could not store, and the precedence it introduces.
+
+    Under the old CHECK a row stated a topic or an urgency, never both, so
+    "interviews, but only the urgent ones" was unwritable and the nearest rule
+    applied to every interview notification. Here the broad topic rule turns
+    email OFF for the topic, and the narrower cell turns it back ON for the
+    urgent ones only.
+    """
+    add_topic(session, "interviews")
+    add_policy(session, "email", topic="interviews", enabled=False)
+    add_policy(session, "email", topic="interviews", urgency="high", enabled=True)
+
+    urgent = emit_axes(
+        session, [1], "interview.cancelled", topic="interviews", urgency="high", title="u",
+    )[0]
+    ordinary = emit_axes(
+        session, [1], "interview.noted", topic="interviews", urgency="normal", title="o",
+    )[0]
+    assert deliveries(session, urgent.id) == ["email"], "the two-coordinate cell should win"
+    assert deliveries(session, ordinary.id) == [], "the topic rule should still apply here"
+
+
+def test_an_urgency_row_applies_across_every_topic(session):
+    """The other single coordinate: a column of the matrix rather than a row."""
+    add_topic(session, "interviews")
+    add_topic(session, "candidates")
+    add_policy(session, "email", urgency="low", enabled=True)  # even the quiet rung
+    a = emit_axes(session, [1], "interview.noted", topic="interviews", urgency="low", title="a")[0]
+    b = emit_axes(session, [1], "candidate.viewed", topic="candidates", urgency="low", title="b")[0]
+    assert deliveries(session, a.id) == ["email"]
+    assert deliveries(session, b.id) == ["email"]
+
+
+def test_the_all_null_row_is_the_org_wide_default(session):
+    """Both coordinates NULL was forbidden before; it is the default row now."""
+    add_topic(session, "interviews")
+    add_policy(session, "email", enabled=False)  # no topic, no urgency
+    n = emit_axes(session, [1], "interview.cancelled", topic="interviews", urgency="high")[0]
+    assert deliveries(session, n.id) == [], "the default row should suppress email everywhere"
 
 
 def test_org_override_row_beats_platform_row(session):

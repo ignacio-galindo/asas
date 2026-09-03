@@ -39,7 +39,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Optional
 
-from sqlalchemy import JSON, CheckConstraint, Column
+from sqlalchemy import JSON, Column
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy import Index, UniqueConstraint
 from sqlmodel import Field, SQLModel
@@ -239,22 +239,42 @@ class NotificationTopic(SQLModel, table=True):
 
 
 class NotificationChannelPolicy(SQLModel, table=True):
-    """One routing deviation: enables/disables a channel for a topic OR an axis
-    condition (urgency and/or nature) — exactly one of the two, CHECK-enforced.
+    """One routing deviation: a cell of the (topic × urgency) matrix, with either
+    coordinate optional.
 
-    Resolution precedence (DR 0003 S-5, per channel, most specific wins):
-    topic row → axis row → the built-in code fallback (`low` → in-app only,
-    else in-app + email). Org override rows beat platform rows within a tier.
-    ``mandatory`` marks channels user preferences may not disable (U-3)."""
+    **A row may now carry BOTH a topic and an urgency**, which is the change from
+    0.16.0's shape. Before, a CHECK forbade the combination: a row was a topic
+    rule or an axis rule, never both, so "interview notifications, but only the
+    urgent ones, go to email" could not be stored at all — the nearest
+    expressible rules were "all interview notifications" or "all urgent
+    notifications", and neither is the rule an administrator meant. Nothing
+    warned about the gap because the constraint rejected the write.
+
+    So the two coordinates are independent now, and NULL means "every value of
+    this axis":
+
+    ======================  ===========================================
+    ``(topic, urgency)``    the rule
+    ======================  ===========================================
+    ``("interviews", …)``   this topic, at this urgency  ← the new cell
+    ``("interviews", None)``this topic, every urgency
+    ``(None, "high")``      every topic, at this urgency
+    ``(None, None)``        every notification (the org-wide default)
+    ======================  ===========================================
+
+    Resolution precedence (per channel, most specific wins): both coordinates
+    beat topic alone beats urgency alone beats the all-NULL row beats the
+    built-in code fallback (``low`` → in-app only, else in-app + email). Org
+    override rows beat platform rows within a tier. ``mandatory`` marks channels
+    user preferences may not disable (U-3).
+
+    ``nature`` is NOT a routing condition. It stays on the notification row,
+    where it drives the UI treatment and the email subject, but it never decided
+    a channel: what a notification asks of you is not the same question as how
+    loudly to deliver it, and urgency already answers the second. Every rule
+    written against it could be written against urgency instead."""
 
     __tablename__ = "notification_channel_policy"
-    __table_args__ = (
-        CheckConstraint(
-            "(topic IS NOT NULL AND urgency IS NULL AND nature IS NULL) OR "
-            "(topic IS NULL AND (urgency IS NOT NULL OR nature IS NOT NULL))",
-            name="ck_notification_channel_policy_one_condition",
-        ),
-    )
 
     id: Optional[int] = Field(default=None, primary_key=True)
     #: Opaque, exactly like the notification row's. A platform row is NULL; an
@@ -267,10 +287,6 @@ class NotificationChannelPolicy(SQLModel, table=True):
     urgency: Optional[Urgency] = Field(
         default=None,
         sa_column=Column(SAEnum(Urgency, native_enum=False), nullable=True),
-    )
-    nature: Optional[Nature] = Field(
-        default=None,
-        sa_column=Column(SAEnum(Nature, native_enum=False), nullable=True),
     )
     channel: str  # "in_app", "email", "teams", …
     enabled: bool = True

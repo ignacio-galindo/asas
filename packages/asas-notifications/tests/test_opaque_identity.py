@@ -196,7 +196,7 @@ def test_a_uuid_org_can_own_a_topic_and_a_policy_row(session, org):
     # and the rule is actually read back for this org, not merely stored
     n = emit(session, "invoice.due", [uid()], topic="billing")[0]
     assert "email" not in service.resolve_channels(
-        session, org, topic="billing", nature="info", urgency="normal",
+        session, org, topic="billing", urgency="normal",
     )
     assert n.org_id == org
 
@@ -212,7 +212,7 @@ def test_an_org_policy_row_does_not_leak_to_another_uuid_org(session):
     service.configure_context_resolver(lambda s: (0, org_b))
     service.config_cache_clear()
     assert "email" in service.resolve_channels(
-        session, org_b, topic="billing", nature="info", urgency="normal",
+        session, org_b, topic="billing", urgency="normal",
     ), "org A's override suppressed email for org B"
 
 

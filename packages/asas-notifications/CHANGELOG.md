@@ -5,6 +5,52 @@ Pre-1.0, a breaking change bumps the **minor**.
 
 Release procedure and the historical tag mapping: [`RELEASING.md`](../../RELEASING.md).
 
+## 0.17.0 — 2026-09-03
+
+### Routing is a (topic × urgency) matrix, and `nature` is not a condition
+
+**The cell that could not be written.** A CHECK let a policy row state a topic
+OR an axis condition, never both, so "interview notifications, but only the
+urgent ones, go to email" had nowhere to live — the nearest storable rules were
+"all interview notifications" or "all urgent notifications", and neither is what
+an administrator means. A topic row was also never compared against urgency at
+all, so the closest available rule applied more widely than intended.
+
+The coordinates are independent now, and NULL is a wildcard:
+
+| `(topic, urgency)` | the rule |
+| --- | --- |
+| `("interviews", "high")` | this topic at this urgency — **new** |
+| `("interviews", None)` | this topic, every urgency |
+| `(None, "high")` | every topic at this urgency |
+| `(None, None)` | every notification — the org-wide default, also new |
+
+Per channel the most specific match wins: two coordinates beat one, one beats
+the all-NULL default, that beats the built-in fallback (`low` → in-app only,
+else in-app + email). Org rows still beat platform rows, ties still resolve to
+the newest row.
+
+### Breaking
+
+- **`resolve_channels` no longer takes `nature=`.** Drop the argument.
+- **`notification_channel_policy.nature` is dropped** (migration `0007`), and
+  with it the `ck_notification_channel_policy_one_condition` CHECK.
+- **A rule whose only condition was `nature` is DELETED**, not widened, and the
+  count is logged. With the column gone its condition would vanish and the row
+  would begin matching every notification — a silent widening is worse than a
+  rule an operator has to rewrite.
+
+**What this genuinely costs.** Two notifications that differ *only* in nature now
+route identically. The shipped example was "a warning emails even at low urgency
+while an info does not", and that is no longer expressible: urgency cannot
+separate them (both are low), so such a rule has to be restated with a topic.
+`nature` keeps its place on the `notification` row, where it drives the UI
+treatment and the email subject — only its role in choosing a channel ends.
+
+The downgrade restores the column and the CHECK. It cannot un-delete rows or
+split a two-coordinate cell into a shape the old constraint accepts, so it
+deletes those cells and the all-NULL rows and says so.
+
 ## 0.16.0 — 2026-09-03
 
 Implements DR 0003 (U-1 + U-2): action-referenced notifications and axis-based,

@@ -57,7 +57,7 @@ from .service import (
     suppressed,
 )
 
-__version__ = "0.16.0"
+__version__ = "0.17.0"
 
 __all__ = [
     "Category",
