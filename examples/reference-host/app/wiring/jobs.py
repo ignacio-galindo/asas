@@ -29,7 +29,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from ..models import DEFAULT_ORG_ID, SlaNotice, Ticket
-from .notifications import KIND_SLA_BREACHED
+from .notifications import AXES, KIND_SLA_BREACHED
 
 KIND_SLA_SWEEP = "tickets.sla_sweep"
 
@@ -111,6 +111,7 @@ def _sla_sweep(session: Session, payload: dict | None = None, **_kwargs) -> None
             session,
             [ticket.assignee_id],
             KIND_SLA_BREACHED,
+            **AXES[KIND_SLA_BREACHED],
             title=f"Ticket #{ticket.id} is past its due date",
             entity_type="ticket",
             entity_id=ticket.id,

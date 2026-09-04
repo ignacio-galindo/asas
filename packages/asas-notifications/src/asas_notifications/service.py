@@ -1,15 +1,16 @@
 """Emitter seam + routing policy + dispatcher (WXL-222; DR 0003).
 
 - Producers call ``notify`` inside their own transaction — the insert IS the
-  enqueue — passing the **application action** that caused the emit and the
-  three axes (topic/nature/urgency). No registration: the action is a
-  reference, not a declaration; ``register_kind`` survives one release as a
-  deprecating shim (DR 0003 I-3).
+  enqueue — passing the **application action** that caused the emit and the two
+  axes (topic/importance). No registration: the action is a reference, not a
+  declaration; ``register_kind`` survives one release as a deprecating shim
+  (DR 0003 I-3).
 - Routing resolves per channel, most specific wins: topic policy row → axis
-  policy row → the built-in fallback, which is exactly the pre-0.16 rule —
-  ``low`` is in-app only (ambient activity never emails you — the epic's KPI),
-  ``normal``/``high`` add an email delivery row. Empty policy tables therefore
-  reproduce 0.15 behavior bit-for-bit (the DR's equivalence guarantee).
+  policy row → the built-in fallback, which is the pre-0.16 rule minus the rung
+  that never mattered — ``low`` is in-app only (ambient activity never emails
+  you — the epic's KPI), ``high`` adds an email delivery row. Empty policy
+  tables therefore reproduce 0.15 behavior for both surviving rungs (the DR's
+  equivalence guarantee).
   ``in_app`` is the notification row itself; a policy that disables it for an
   emit suppresses the whole insert (no row, no anchor for deliveries).
 - The dispatcher is queue-shaped but v1-simple: an after-commit hook plus a
@@ -36,14 +37,14 @@ from sqlmodel import Session, select
 
 from .channels import DeliveryPayload, SkipDelivery, adapter_for
 from .models import (
-    Category,
+    RETIRED_URGENCY,
     DeliveryStatus,
-    Nature,
+    Importance,
     Notification,
     NotificationChannelPolicy,
     NotificationDelivery,
+    NotificationImportance,
     NotificationTopic,
-    Urgency,
 )
 
 log = logging.getLogger(__name__)
@@ -62,10 +63,26 @@ IN_APP = "in_app"
 DEFAULT_TOPIC = "general"
 
 
+def importance_from_legacy_urgency(value: Any) -> Importance:
+    """One of the two surviving rungs from a pre-0.18.0 ``urgency`` value.
+
+    The retired middle rung folds **UP**, because the built-in fallback it was
+    routed by was ``urgency is not Urgency.low``: a ``normal`` notification
+    emailed somebody, so reading it as ``high`` is what actually happened to it,
+    and reading it as ``low`` would claim it had stayed in the feed. The same
+    fold is what migration ``0009`` applies to stored rows, and it is deliberately
+    NOT applied to policy cells, which the migration deletes instead: a rule an
+    administrator wrote for one rung must not quietly start matching another.
+    """
+    raw = getattr(value, "value", value)
+    if raw == RETIRED_URGENCY:
+        return Importance.high
+    return Importance(raw)
+
+
 @dataclass(frozen=True)
 class KindSpec:
-    category: Nature  # field name kept for one release — hosts introspect it
-    urgency: Urgency
+    importance: Importance
     topic: str = DEFAULT_TOPIC
 
 
@@ -75,25 +92,32 @@ _KINDS: dict[str, KindSpec] = {}
 def register_kind(
     kind: str,
     *,
-    category: Nature,
-    urgency: Urgency,
-    # Accepted and ignored: ``reason`` is no longer stored, and a 0.15 wiring
-    # that still passes it must keep working for this shim's last release.
+    urgency: Any,
+    # Accepted and ignored, both of them. ``reason`` is no longer stored;
+    # ``category`` (the presentation axis, ``nature`` from 0.16) left the
+    # package in 0.18.0 and there is nowhere to put it. A 0.15 wiring passes
+    # both, and this shim's whole job is that such a wiring keeps working for
+    # its last release — so the signature is FROZEN in the 0.15 vocabulary
+    # rather than being renamed halfway. New call sites pass the axes on
+    # :func:`notify` and never come here.
+    category: Any = None,
     reason: Any = None,
     topic: str = DEFAULT_TOPIC,
 ) -> None:
     """DEPRECATED (DR 0003): the kind catalog is gone — pass the action and the
-    four axes on :func:`notify` instead. This shim keeps a 0.15 wiring working
+    two axes on :func:`notify` instead. This shim keeps a 0.15 wiring working
     for one release: a registered kind supplies axis defaults when ``notify``
     is called with its name and no axes; ``topic`` defaults to the seeded
-    ``general`` topic so a legacy emit always passes topic validation."""
+    ``general`` topic so a legacy emit always passes topic validation. The
+    registered ``urgency`` becomes the emit's ``importance``, with the retired
+    middle rung folded up (:func:`importance_from_legacy_urgency`)."""
     warnings.warn(
-        "register_kind() is deprecated: pass action= and the four axes "
-        "(topic/nature/urgency) on notify() instead (DR 0003)",
+        "register_kind() is deprecated: pass action= and the two axes "
+        "(topic/importance) on notify() instead (DR 0003)",
         DeprecationWarning,
         stacklevel=2,
     )
-    _KINDS[kind] = KindSpec(Nature(category), Urgency(urgency), topic)
+    _KINDS[kind] = KindSpec(importance_from_legacy_urgency(urgency), topic)
 
 
 def registered_kinds() -> dict[str, KindSpec]:
@@ -234,12 +258,18 @@ def _recipient_conditions(session: Session, user_id: Any) -> list:
 CONFIG_TTL_SECONDS = 60
 _topic_cache: dict[str, tuple[datetime, frozenset]] = {}
 _policy_cache: dict[Optional[int], tuple[datetime, tuple]] = {}
+#: The importance catalogue, cached whole and keyed by nothing: it is small
+#: (single digits of rows per org) and both readers want the same set, so one
+#: entry beats an org-keyed cache that would miss on the platform rows.
+_importance_cache: dict[str, tuple[datetime, tuple]] = {}
 
 
 def config_cache_clear() -> None:
-    """Drop the cached topic/policy config (tests; admin APIs after a write)."""
+    """Drop the cached topic/importance/policy config (tests; admin APIs after
+    a write)."""
     _topic_cache.clear()
     _policy_cache.clear()
+    _importance_cache.clear()
 
 
 def _fresh(entry) -> bool:
@@ -274,6 +304,78 @@ def _topic_known(session: Session, topic: str) -> bool:
 
 
 @dataclass(frozen=True)
+class _ImportanceRow:  # a detached, cache-safe copy of NotificationImportance
+    org_id: Optional[str]
+    key: str
+    emails_by_default: bool
+
+
+def _importance_rows(session: Session, *, refresh: bool = False) -> tuple:
+    entry = None if refresh else _importance_cache.get("all")
+    if not _fresh(entry):
+        rows = session.exec(
+            select(
+                NotificationImportance.org_id,
+                NotificationImportance.key,
+                NotificationImportance.emails_by_default,
+            )
+        ).all()
+        entry = (
+            datetime.utcnow(),
+            tuple(
+                _ImportanceRow(org_id=r[0], key=r[1], emails_by_default=bool(r[2]))
+                for r in rows
+            ),
+        )
+        _importance_cache["all"] = entry
+    return entry[1]
+
+
+def _importance_known(session: Session, importance: str) -> bool:
+    """Membership with a fresh re-query on miss, exactly like
+    :func:`_topic_known`: a rung an administrator added on another replica
+    inside the TTL window must cost one extra SELECT, never a false LookupError
+    that aborts the producer's transaction.
+
+    Org-agnostic, for the topic catalogue's reason: this call is catching
+    typos and unseeded values, and a key that exists for any org is neither.
+    Which rung applies to WHICH org is policy resolution's business, and that
+    falls back rather than failing."""
+    if any(r.key == importance for r in _importance_rows(session)):
+        return True
+    return any(r.key == importance for r in _importance_rows(session, refresh=True))
+
+
+def _emails_by_default(session: Session, org: Optional[Any], importance: str) -> bool:
+    """The built-in fallback for external channels at this rung.
+
+    Reads the catalogue rather than comparing against ``Importance.low``, which
+    is what the fallback did until 0.19.0 and what made two rungs the only two
+    rungs. An org override row beats the platform row; a rung with no row at all
+    (a value that predates the catalogue, or one deleted out from under stored
+    rows) is treated as QUIET, because the direction that under-delivers is the
+    one to fail in: a notification nobody emailed is still in the recipient's
+    feed, and mail sent on a guess cannot be recalled."""
+    rows = [r for r in _importance_rows(session) if r.key == importance]
+    if not rows:
+        return False
+    org_value = normalize_id(org) if org is not None else None
+    override = next(
+        (r for r in rows if r.org_id is not None and r.org_id == org_value), None
+    )
+    if override is not None:
+        return override.emails_by_default
+    # The PLATFORM row explicitly, never "the first row that came back". The
+    # catalogue is cached whole and unscoped (one small table, both readers want
+    # the same set), so another org's override for this key is sitting in that
+    # list too and row order is whatever the SELECT happened to return. Taking
+    # the first would let one org's routing default decide another's, which is
+    # the one class of bug this package cannot ship.
+    platform = next((r for r in rows if r.org_id is None), None)
+    return platform.emails_by_default if platform is not None else False
+
+
+@dataclass(frozen=True)
 class _PolicyRow:  # a detached, cache-safe copy of NotificationChannelPolicy
     id: int
     #: The host's own org id in storage form, not an int: this is a copy of a
@@ -281,7 +383,7 @@ class _PolicyRow:  # a detached, cache-safe copy of NotificationChannelPolicy
     #: has not held since identity became opaque.
     org_id: Optional[str]
     topic: Optional[str]
-    urgency: Optional[str]
+    importance: Optional[str]
     channel: str
     enabled: bool
     mandatory: bool
@@ -305,7 +407,9 @@ def _policy_rows(session: Session, org: Optional[Any]) -> tuple:
                     id=r.id,
                     org_id=r.org_id,
                     topic=r.topic,
-                    urgency=r.urgency.value if r.urgency else None,
+                    # A plain string since 0.19.0 (the column is a catalogue
+                    # key, not an enum member), so nothing to unwrap.
+                    importance=r.importance,
                     channel=r.channel,
                     enabled=r.enabled,
                     mandatory=r.mandatory,
@@ -324,37 +428,49 @@ def resolve_channels(
     org: Optional[Any],
     *,
     topic: str,
-    urgency: Urgency,
+    importance: Any,
 ) -> dict[str, bool]:
     """The effective channel set for one emit: ``{channel: mandatory}`` for
     every **enabled** channel.
 
-    The policy table is a **(topic × urgency) matrix** with either coordinate
+    The policy table is a **(topic × importance) matrix** with either coordinate
     optional, and per channel the most specific matching cell wins:
 
-    1. both coordinates match — this topic at this urgency
-    2. topic matches, urgency is NULL — this topic, any urgency
-    3. urgency matches, topic is NULL — any topic at this urgency
+    1. both coordinates match — this topic at this importance
+    2. topic matches, importance is NULL — this topic, any importance
+    3. importance matches, topic is NULL — any topic at this importance
     4. both NULL — the org-wide default row
-    5. no row — the built-in fallback: ``low`` → in-app only, else in-app +
-       email, so empty policy tables reproduce 0.15 routing exactly
+    5. no row — the built-in fallback: in-app always, plus email when the
+       rung's own catalogue row says ``emails_by_default`` (the seeded ``low``
+       says no and ``high`` says yes, so empty policy tables route exactly as
+       they did before the catalogue existed)
 
     Within a tier an org override row beats a platform row, and a tie between
     equally specific rows resolves to the NEWEST, so an administrator's latest
     change takes effect rather than being shadowed by a stale predecessor.
 
-    Tier 1 is new in this release. Until now a CHECK constraint forbade a row
-    from carrying both coordinates, so the matrix was really two independent
-    lists and "this topic, but only when urgent" was unstorable. A topic rule
-    also silently ignored urgency, which meant the closest thing an
+    Tier 1 arrived in 0.17.0. Before it a CHECK constraint forbade a row from
+    carrying both coordinates, so the matrix was really two independent lists and
+    "this topic, but only when it matters" was unstorable. A topic rule also
+    silently ignored the second axis, which meant the closest thing an
     administrator could write applied far more widely than they intended.
 
-    ``nature`` is not a condition here. It describes what the notification asks
-    of the recipient, which is a different question from how loudly to deliver
-    it, and urgency already answers that one."""
+    **The second coordinate is ``importance``, and since 0.19.0 it is a
+    CATALOGUE rather than an enum.** It was ``urgency`` with three rungs until
+    0.18.0, and the middle one selected exactly what the top one did, so it was
+    a coordinate an administrator could only ever have used to write the same
+    rule twice; dropping it was right, and hard-coding the survivors into the
+    column type was the overcorrection. A rung is a row in
+    ``notification_importance`` now, and its ``emails_by_default`` is what step
+    5 reads, so a deployment can add one and say what it means without touching
+    this package. ``nature`` is not a condition either, and since 0.18.0 is not
+    in this package at all: it described what the notification asks of the
+    recipient, which is presentation, and the host renders its own feed."""
     rows = _policy_rows(session, org)
     channels = {IN_APP, "email"} | {r.channel for r in rows}
-    urgency_value = urgency.value if isinstance(urgency, Urgency) else str(urgency)
+    importance_value = (
+        importance.value if isinstance(importance, Importance) else str(importance)
+    )
     resolved: dict[str, bool] = {}
     for channel in channels:
         # Every cell whose set coordinates match this emit. A NULL coordinate is
@@ -365,7 +481,7 @@ def resolve_channels(
             for r in rows
             if r.channel == channel
             and (r.topic is None or r.topic == topic)
-            and (r.urgency is None or r.urgency == urgency_value)
+            and (r.importance is None or r.importance == importance_value)
         ]
         pick = None
         if candidates:
@@ -377,7 +493,7 @@ def resolve_channels(
             pick = max(
                 candidates,
                 key=lambda r: (
-                    (r.topic is not None) + (r.urgency is not None),
+                    (r.topic is not None) + (r.importance is not None),
                     r.org_id is not None,
                     r.id,
                 ),
@@ -387,7 +503,7 @@ def resolve_channels(
                 resolved[channel] = pick.mandatory
         elif channel == IN_APP:
             resolved[channel] = False
-        elif channel == "email" and urgency is not Urgency.low:
+        elif channel == "email" and _emails_by_default(session, org, importance_value):
             resolved[channel] = False
     return resolved
 
@@ -419,8 +535,9 @@ def notify(
     action: Optional[str] = None,
     *,
     topic: Optional[str] = None,
-    nature: Optional[Nature] = None,
-    urgency: Optional[Urgency] = None,
+    # A seeded ``Importance`` member or any key in ``notification_importance``;
+    # validated against the catalogue rather than coerced through an enum.
+    importance: Optional[Any] = None,
     title: Optional[str] = None,
     body: Optional[str] = None,
     link: Optional[str] = None,
@@ -437,7 +554,6 @@ def notify(
     locale: Optional[str] = None,
     coalesce_unread: bool = False,
     merge_body: Optional[Callable[[Optional[str], Optional[str]], Optional[str]]] = None,
-    category: Optional[Nature] = None,  # deprecated alias for nature (0.15 name)
     kind: Optional[str] = None,  # deprecated alias for action (0.15 name)
 ) -> list[Notification]:
     """Insert notification (+ delivery) rows in the caller's transaction.
@@ -445,7 +561,7 @@ def notify(
     DR 0003: ``action`` is the application action that caused this emit
     (``"job.publish"`` — imperative, the app's own vocabulary), a *reference
     without declaration*: provenance, the coalescing identity, and nothing
-    else. ``None`` marks an ad hoc one-off, which never coalesces. The four
+    else. ``None`` marks an ad hoc one-off, which never coalesces. The two
     axes travel on the call; ``topic`` is required with an action (ad hoc
     emits land in the seeded ``general`` topic) and must exist in
     ``notification_topic`` — the one fail-loud reference, because policy and
@@ -485,21 +601,19 @@ def notify(
             stacklevel=2,
         )
         action = action if action is not None else kind
-    if category is not None:
-        warnings.warn(
-            "notify(category=...) is deprecated: the axis is nature= now",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        nature = nature if nature is not None else category
+    # ``nature=`` and ``category=`` are NOT accepted-and-ignored here, which is
+    # deliberate: a renamed axis can take an alias, a REMOVED one cannot. Values
+    # for an axis this package no longer stores would be silently discarded, so
+    # the natural TypeError on an unexpected keyword is the right failure — loud,
+    # at the call site, naming the argument.
+    #
     # The shim applies ONLY to fully-legacy calls (no axis passed at all): a
     # call site that states even one axis has been converted and must get the
     # new fail-loud contract, not silent backfill from a spec that will be
     # deleted next release.
     if (
         action is not None
-        and nature is None
-        and urgency is None
+        and importance is None
         and topic is None
         and (spec := _KINDS.get(action)) is not None
     ):
@@ -509,17 +623,12 @@ def notify(
             DeprecationWarning,
             stacklevel=2,
         )
-        nature, urgency, topic = spec.category, spec.urgency, spec.topic
+        importance, topic = spec.importance, spec.topic
 
-    missing = [
-        name
-        for name, value in (("nature", nature), ("urgency", urgency))
-        if value is None
-    ]
-    if missing:
+    if importance is None:
         raise TypeError(
-            f"notify() is missing the {', '.join(missing)} axis/axes: pass them "
-            "explicitly — there is no kind catalog to default from (DR 0003)"
+            "notify() is missing the importance axis: pass it explicitly — "
+            "there is no kind catalog to default from (DR 0003)"
         )
     if action is not None and topic is None:
         raise TypeError(
@@ -530,8 +639,13 @@ def notify(
         topic = DEFAULT_TOPIC  # ad hoc emits land in the seeded general topic
     if title is None:
         raise TypeError("notify() requires title= (template rendering lands with U-4)")
-    nat = Nature(nature)
-    urg = Urgency(urgency)
+    # A host may hand over either a member of the seeded enum or a bare string;
+    # what it may NOT hand over is a rung nothing seeded, which is checked
+    # against the catalogue below beside the topic. The retired ``urgency``
+    # middle rung gets no special case: unless a deployment has actually seeded
+    # ``normal`` as a rung of its own, it fails as the unknown value it is,
+    # which is what tells an unconverted call site apart from a configured one.
+    imp = str(getattr(importance, "value", importance))
 
     # The one reference an emit can get wrong that management depends on:
     # policy rows and (U-3) preferences key on topic, so an unknown topic is a
@@ -542,6 +656,18 @@ def notify(
         raise LookupError(
             f"unknown notification topic {topic!r}: seed it in "
             "notification_topic (platform row) before emitting into it"
+        )
+
+    # The second reference, and it fails the same way for the same reason: the
+    # matrix keys on this axis too, so a rung nothing seeded is a catalog
+    # mistake. Before 0.19.0 this was a ``ValueError`` out of an enum
+    # constructor, which said the value was invalid; it says where to fix it
+    # now, because the answer is a row and not a code change.
+    if not _importance_known(session, imp):
+        raise LookupError(
+            f"unknown notification importance {imp!r}: seed it in "
+            "notification_importance (platform row, or an org override) "
+            "before emitting at it"
         )
 
     if _suppress_notify.get():
@@ -588,7 +714,7 @@ def notify(
     if not ids:
         return []
 
-    resolved = resolve_channels(session, org, topic=topic, urgency=urg)
+    resolved = resolve_channels(session, org, topic=topic, importance=imp)
     if IN_APP not in resolved:
         # The notification row is both the feed entry and the FK anchor for
         # delivery rows, so "no in_app" means nothing lands anywhere. That is
@@ -669,8 +795,7 @@ def notify(
             org_id=normalize_id(org),
             action=action,
             topic=topic,
-            nature=nat,
-            urgency=urg,
+            importance=imp,
             entity_type=entity_type,
             entity_id=normalize_id(entity_id),
             title=title,
@@ -714,10 +839,8 @@ def list_feed(
     *,
     state: str = "open",
     unread_only: bool = False,
-    nature: Optional[Nature] = None,
     page: int = 1,
     page_size: int = 20,
-    category: Optional[Nature] = None,  # deprecated alias for nature (0.15 name)
 ) -> tuple[list[Notification], int]:
     """One page of the recipient's feed plus the filtered total, paged in SQL.
 
@@ -726,14 +849,15 @@ def list_feed(
     directly. ``total`` (COUNT) and the page SELECT are two statements with no
     shared snapshot: a commit landing between them can skew total against the
     page by a row — the standard COUNT + LIMIT/OFFSET trade, transient and
-    self-healing on the next poll."""
-    if category is not None:
-        warnings.warn(
-            "list_feed(category=...) is deprecated: the parameter is nature= now",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        nature = nature if nature is not None else category
+    self-healing on the next poll.
+
+    **There is no presentation filter here any more.** ``nature=`` narrowed the
+    feed on the axis that left the package in 0.18.0. A host that keeps that axis
+    on a sidecar row of its own keeps the ability to filter on it too, in its own
+    query where the column now lives; this package cannot filter on a column it
+    does not own, and a parameter that silently matched everything would be worse
+    than its absence. The two STATE axes (open/archived and unread) are still
+    here, because those are this package's own columns."""
     conditions = _recipient_conditions(session, user_id)
     if state == "open":
         conditions.append(Notification.archived_at.is_(None))
@@ -741,8 +865,6 @@ def list_feed(
         conditions.append(Notification.archived_at.is_not(None))
     if unread_only:
         conditions.append(Notification.read_at.is_(None))
-    if nature is not None:
-        conditions.append(Notification.nature == nature)
     total = session.exec(
         select(sa_func.count()).select_from(Notification).where(*conditions)
     ).one()
@@ -930,8 +1052,7 @@ def dispatch_pending(engine, *, limit: int = 100) -> int:
                 _notification_t.c.org_id,
                 _notification_t.c.action,
                 _notification_t.c.topic,
-                _notification_t.c.nature,
-                _notification_t.c.urgency,
+                _notification_t.c.importance,
                 _notification_t.c.title,
                 _notification_t.c.body,
                 _notification_t.c.link,
@@ -982,8 +1103,7 @@ def dispatch_pending(engine, *, limit: int = 100) -> int:
             org_id=r.org_id,
             action=r.action,
             topic=r.topic,
-            nature=r.nature,
-            urgency=r.urgency,
+            importance=r.importance,
             title=r.title,
             body=r.body,
             link=r.link,

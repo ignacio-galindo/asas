@@ -34,7 +34,7 @@ def test_unknown_topic_fails_loud(session):
     with pytest.raises(LookupError, match="topic"):
         notifications.notify(
             session, [1], "job.publish",
-            topic="never.seeded", nature="info", urgency="low", title="x",
+            topic="never.seeded", importance="low", title="x",
         )
 
 

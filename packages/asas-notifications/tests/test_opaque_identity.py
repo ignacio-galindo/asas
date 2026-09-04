@@ -43,8 +43,7 @@ def org() -> str:
 
 def emit(session, action, recipients, **kw):
     kw.setdefault("topic", "general")
-    kw.setdefault("nature", "info")
-    kw.setdefault("urgency", "normal")
+    kw.setdefault("importance", "high")
     kw.setdefault("title", "Hello")
     rows = notifications.notify(session, recipients, action, **kw)
     session.commit()
@@ -106,12 +105,12 @@ def test_coalescing_folds_on_a_uuid_entity_id(session, org):
 
     first = emit(
         session, "doc.edited", [user],
-        urgency="low", entity_type="doc", entity_id=entity,
+        importance="low", entity_type="doc", entity_id=entity,
         coalesce_unread=True, title="v1",
     )[0]
     again = emit(
         session, "doc.edited", [user],
-        urgency="low", entity_type="doc", entity_id=entity,
+        importance="low", entity_type="doc", entity_id=entity,
         coalesce_unread=True, title="v2",
     )[0]
 
@@ -127,13 +126,13 @@ def test_coalescing_keeps_two_uuid_orgs_apart(session):
 
     service.configure_context_resolver(lambda s: (0, org_a))
     a = emit(
-        session, "doc.edited", [user], urgency="low", entity_type="doc",
+        session, "doc.edited", [user], importance="low", entity_type="doc",
         entity_id=entity, coalesce_unread=True, title="org A",
     )[0]
 
     service.configure_context_resolver(lambda s: (0, org_b))
     b = emit(
-        session, "doc.edited", [user], urgency="low", entity_type="doc",
+        session, "doc.edited", [user], importance="low", entity_type="doc",
         entity_id=entity, coalesce_unread=True, title="org B",
     )[0]
 
@@ -195,7 +194,7 @@ def test_a_uuid_org_can_own_a_topic_and_a_policy_row(session, org):
     # and the rule is actually read back for this org, not merely stored
     n = emit(session, "invoice.due", [uid()], topic="billing")[0]
     assert "email" not in service.resolve_channels(
-        session, org, topic="billing", urgency="normal",
+        session, org, topic="billing", importance="high",
     )
     assert n.org_id == org
 
@@ -211,7 +210,7 @@ def test_an_org_policy_row_does_not_leak_to_another_uuid_org(session):
     service.configure_context_resolver(lambda s: (0, org_b))
     service.config_cache_clear()
     assert "email" in service.resolve_channels(
-        session, org_b, topic="billing", urgency="normal",
+        session, org_b, topic="billing", importance="high",
     ), "org A's override suppressed email for org B"
 
 
