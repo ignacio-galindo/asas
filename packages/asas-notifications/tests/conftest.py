@@ -71,7 +71,13 @@ def session(migrated):
 
 @pytest.fixture()
 def kind(session):
-    """A registered 'normal' (email-routing) kind with a unique name."""
+    """A registered email-routing kind with a unique name.
+
+    Registered in the 0.15 vocabulary on purpose: ``register_kind`` is the
+    deprecated shim for exactly such a wiring, so its frozen signature is what
+    these fixtures exercise. The ``normal`` rung folds up into ``importance =
+    high``, which routes to email as it always did.
+    """
     name = f"test.{uuid.uuid4().hex[:8]}"
     asas_notifications.register_kind(
         name, category="info", urgency="normal", reason="participant"
@@ -81,7 +87,7 @@ def kind(session):
 
 @pytest.fixture()
 def ambient_kind(session):
-    """A registered 'low' (in-app only) kind with a unique name."""
+    """A registered quiet (in-app only) kind with a unique name."""
     name = f"ambient.{uuid.uuid4().hex[:8]}"
     asas_notifications.register_kind(
         name, category="info", urgency="low", reason="participant"

@@ -5,6 +5,124 @@ Pre-1.0, a breaking change bumps the **minor**.
 
 Release procedure and the historical tag mapping: [`RELEASING.md`](../../RELEASING.md).
 
+## 0.19.0 — 2026-09-04
+
+### `importance` is a catalogue, not an enum
+
+The rungs are rows in a new `notification_importance` table now, seeded with
+`low` and `high` and extensible per org, exactly as `notification_topic` already
+was. A deployment can add `critical` and route on it without touching this
+package.
+
+**What 0.18.0 got right, and what it overcorrected.** Narrowing the axis to two
+rungs was right *about the built-in fallback*, which can only say "in-app" or
+"in-app and email" and therefore cannot tell a third rung from a second one.
+That argument was then applied to the MATRIX, which is a table an administrator
+writes cells into: `(interviews, critical) -> email` was always expressible, and
+the only thing stopping it was that `critical` could not be spelled. Meanwhile
+`topic`, the other coordinate of the same matrix, had been a seeded table all
+along. The asymmetry had no reason behind it.
+
+- **`notification_importance`** carries platform rows (`org_id NULL`) plus org
+  override rows, DR 0001's shared-with-overrides pattern. Migration `0010`
+  creates it and seeds `low` and `high`.
+- **`emails_by_default` is the built-in fallback, made explicit.** It used to be
+  the expression `importance is not low`, so "which rungs email when no cell
+  matches" was a fact about the enum's membership rather than about any rung. It
+  is a column, so a new rung says what it means before an administrator has
+  written a single cell.
+- **`rank` orders the axis for a screen and NOTHING routes on it.** A threshold
+  rule would mean inserting a rung in the middle silently re-routed its
+  neighbours.
+- **The two `importance` columns widen from `VARCHAR(6)`** (the width "normal"
+  needed) to `VARCHAR(40)`. On Postgres that is a catalogue update with no table
+  rewrite; on SQLite the width was never enforced, so the batch rebuild is
+  skipped.
+- **An unseeded rung fails loud**, like an unseeded topic, naming the table to
+  seed it in. It was a `ValueError` out of an enum constructor before, which
+  said the value was invalid rather than where to fix it.
+
+**A deployment that upgrades and adds no rung routes identically**, because the
+two seeded rows carry the old rule as data. That equivalence is the first test
+in `tests/test_importance_catalogue.py`.
+
+### Breaking
+
+- **`Notification.importance` and `NotificationChannelPolicy.importance` are
+  `str`**, not `Importance`. A host reading `.value` off either gets an
+  `AttributeError`; read the column directly.
+- **`NotificationRead.importance` is `str`** on the API schema, for the same
+  reason: typing it as the seeded enum would fail validation on the way OUT for
+  a rung an org had stored happily.
+- **`Importance` is the seeded platform rungs, not the vocabulary.** It stays
+  exported and its members are unchanged, but membership is no longer what may
+  be stored. Validate against the catalogue (`notify` does).
+- **`notify(importance=...)` accepts any seeded key.** The retired `normal` gets
+  no special case: unless a deployment has actually seeded it, it fails as the
+  unknown value it is, which is what tells an unconverted call site apart from a
+  configured one.
+
+**A host with row level security on these tables** should note that the
+downgrade's fold is unauthenticated and will see nothing through a tenant
+policy; it counts what it could not fold and says so, `0009`'s lesson applied
+again.
+
+## 0.18.0 — 2026-09-04
+
+### The axes are `topic` and `importance`, and there are only two
+
+`urgency` is renamed `importance` and loses its middle rung; `nature` leaves the
+package altogether. What is left is the two axes that decide a channel, in the
+words the routing actually uses.
+
+**The rung that decided nothing.** The built-in fallback under the policy table
+was literally `urgency is not Urgency.low`, so `normal` and `high` selected the
+same channels. An administrator could only ever have told them apart by writing
+two policy cells that said one thing.
+
+- **`Urgency` is now `Importance`, `low | high`.** Migration `0009` renames
+  `notification.urgency` and `notification_channel_policy.urgency` to
+  `importance`.
+- **Notification rows on `normal` fold UP to `high`.** Their loudness is spent by
+  the time it is stored, and such a row DID email somebody, so reading it back as
+  `high` is what happened to it. Reading it as `low` would be a false claim about
+  the past.
+- **Policy cells on `normal` are DELETED**, and the count is logged. Folding
+  would silently widen a rule written for one rung; leaving it would put a value
+  the vocabulary no longer offers into a table an administrator reads.
+  `importance_from_legacy_urgency` is exported for a host that has stored values
+  of its own to fold.
+
+**`nature` is the host's now.** It described what a notification asks of its
+recipient, which is presentation; it stopped being a routing condition in 0.17.0
+and has decided nothing since. A host that renders its own feed is the side that
+knows how it wants to render it, so the column moves out and a host that wants it
+keeps it on a sidecar row of its own.
+
+### Breaking
+
+- **`notify()` takes `importance=` and no longer accepts `nature=` or
+  `category=`.** A removed axis deliberately gets no accepted-and-ignored alias:
+  the natural `TypeError` on an unexpected keyword names the argument at the call
+  site, where silently discarding the value would not. `importance=` is required
+  unless a `register_kind` spec supplies it.
+- **`resolve_channels` takes `importance=`** instead of `urgency=`.
+- **`notification.nature` is dropped** (migration `0009`). **A host that wants
+  those values must copy them out before the migration runs**; it cannot know
+  where they should go.
+- **`list_feed(nature=)` and the router's `nature`/`category` query parameters
+  are gone.** This package cannot filter on a column it does not own, and a
+  parameter that silently matched everything would be worse than its absence. The
+  two state filters (open/archived, unread) are unchanged.
+- **`NotificationRead.nature` and `DeliveryPayload.nature` are gone**, and both
+  `urgency` fields are `importance`.
+- **`Nature` and the `Category` alias are no longer exported**; `Urgency` is
+  `Importance`.
+- `register_kind`'s signature is FROZEN in the 0.15 vocabulary for this shim's
+  last release: it still takes `category=`/`urgency=`/`reason=`, ignores the first
+  and the last, and folds `urgency` into `importance`. A 0.15 wiring keeps
+  working.
+
 ## 0.17.0 — 2026-09-03
 
 ### Routing is a (topic × urgency) matrix, and `nature` is not a condition
