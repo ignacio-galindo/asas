@@ -24,21 +24,35 @@ class SkipDelivery(Exception):
 class DeliveryPayload:
     """Everything an adapter may need, without touching the ORM. Recipient contact
     details (email address, Slack id) are the adapter's own concern — resolved on
-    its side of the seam so this package stays model-free."""
+    its side of the seam so this package stays model-free.
+
+    The payload tracks the columns, so the package keeps ONE vocabulary: 0.16
+    renamed ``kind`` → ``action`` and ``category`` → ``nature`` and added
+    ``topic`` + ``data``; 0.18.0 renamed ``nature``'s successor axis ``urgency``
+    → ``importance`` and dropped ``nature`` itself, presentation being the
+    host's business. An adapter that wants it reads it from the host's own
+    sidecar, keyed on ``notification_id``. Adapters remain render-consumers:
+    ``title``/``body`` arrive final (post-template once U-4 lands) and adapters
+    never touch templates."""
 
     delivery_id: int
     notification_id: int
     channel: str
-    recipient_user_id: int
-    org_id: int
-    kind: str
-    category: str
-    urgency: str
-    reason: str
+    #: The host's own identity strings, not integers: an adapter that looks a
+    #: user up by integer primary key coerces on its own side.
+    recipient_user_id: str
+    org_id: str
+    action: Optional[str]
+    topic: Optional[str]
+    importance: str
     title: str
     body: Optional[str]
     link: Optional[str]
+    data: Optional[dict]
     created_at: datetime
+    #: The recipient's language, stamped at emit. ``None`` when the host wired
+    #: no locale resolver, which means "render in the deployment default".
+    locale: Optional[str] = None
 
 
 class ChannelAdapter(Protocol):
@@ -74,10 +88,9 @@ class LoggingAdapter:
     def send(self, payload: DeliveryPayload) -> None:
         self.sent.append(payload)
         log.info(
-            "notification %s → %s [%s/%s] %r",
+            "notification %s → %s [%s] %r",
             payload.notification_id,
             payload.channel,
-            payload.category,
-            payload.urgency,
+            payload.importance,
             payload.title,
         )

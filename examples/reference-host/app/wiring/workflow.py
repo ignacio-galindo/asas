@@ -32,7 +32,7 @@ from sqlmodel import Session, select
 
 from ..models import Agent, Ticket
 from .access import ENTITY
-from .notifications import KIND_ESCALATION_DECIDED, KIND_ESCALATION_REQUESTED
+from .notifications import AXES, KIND_ESCALATION_DECIDED, KIND_ESCALATION_REQUESTED
 
 PROCESS_KEY = "ticket_escalation"
 
@@ -135,6 +135,7 @@ def _on_complete(session: Session, instance, outcome: str) -> None:
             session,
             [instance.initiated_by],
             KIND_ESCALATION_DECIDED,
+            **AXES[KIND_ESCALATION_DECIDED],
             title=(
                 f"Escalation of ticket #{ticket.id} was "
                 f"{'approved' if approved else 'declined'}"
@@ -179,6 +180,7 @@ def request_escalation(session: Session, ticket: Ticket, requester: Agent):
             session,
             approvers,
             KIND_ESCALATION_REQUESTED,
+            **AXES[KIND_ESCALATION_REQUESTED],
             title=f"Escalation requested for ticket #{ticket.id}",
             actor_user_id=requester.id,
             entity_type="ticket",

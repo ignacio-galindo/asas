@@ -24,12 +24,52 @@ from sqlmodel import Session
 
 from ..models import DEFAULT_ORG_ID, Agent, Ticket
 
-# Kinds are declared, not invented at the call site: the taxonomy decides how a
-# recipient's inbox groups and sorts the row.
+# The actions this host notifies about. A *reference*, not a declaration: the
+# package validates none of them, and the kind catalogue that used to carry
+# their taxonomy is gone (DR 0003).
 KIND_TICKET_ASSIGNED = "ticket.assigned"
 KIND_ESCALATION_REQUESTED = "ticket.escalation_requested"
 KIND_ESCALATION_DECIDED = "ticket.escalation_decided"
 KIND_SLA_BREACHED = "ticket.sla_breached"
+
+#: The axes each of those actions carries, which ride the ``notify`` call.
+#:
+#: Two axes, and both of them route: ``topic`` is the preference grouping and
+#: ``importance`` is how loudly it reaches somebody (``low`` stays in the feed,
+#: ``high`` also emails, absent a policy row saying otherwise). There is no
+#: third: ``nature``, which said what a notification asks of its recipient, was
+#: presentation and left the package in 0.18.0 — a host that wants it keeps it
+#: on a row of its own, because the host is the side that renders the feed.
+#:
+#: Kept in one table here rather than spelled at each emit, so one file still
+#: answers "what does this host notify about", which is the one thing the
+#: deleted kind catalogue was good for. The values travel on the call, which is
+#: where the package wants them.
+#:
+#: ``topic`` must EXIST in ``notification_topic`` or the emit fails loud, by
+#: design: policy and preferences key on it, so a typo is a catalogue mistake.
+#: This host uses the ``general`` platform row the package's own migration
+#: seeds; a host with real preference groupings seeds its own at boot.
+AXES: dict[str, dict[str, str]] = {
+    KIND_TICKET_ASSIGNED: {
+        "topic": notifications.DEFAULT_TOPIC,
+        "importance": "high",
+    },
+    KIND_ESCALATION_REQUESTED: {
+        "topic": notifications.DEFAULT_TOPIC,
+        "importance": "high",
+    },
+    KIND_ESCALATION_DECIDED: {
+        "topic": notifications.DEFAULT_TOPIC,
+        "importance": "high",
+    },
+    # The one quiet action: a breach notice is a standing fact the sweep
+    # re-announces, so it belongs in the feed and not in somebody's mail.
+    KIND_SLA_BREACHED: {
+        "topic": notifications.DEFAULT_TOPIC,
+        "importance": "low",
+    },
+}
 
 
 def _context_resolver(session: Session) -> Optional[tuple[int, int]]:
@@ -88,30 +128,9 @@ def configure() -> None:
     notifications.configure_context_resolver(_context_resolver)
     notifications.configure_recipient_filter(_recipient_filter)
 
-    notifications.register_kind(
-        KIND_TICKET_ASSIGNED,
-        category=notifications.Category.action,
-        urgency=notifications.Urgency.normal,
-        reason=notifications.Reason.participant,
-    )
-    notifications.register_kind(
-        KIND_ESCALATION_REQUESTED,
-        category=notifications.Category.action,
-        urgency=notifications.Urgency.high,
-        reason=notifications.Reason.requested,
-    )
-    notifications.register_kind(
-        KIND_ESCALATION_DECIDED,
-        category=notifications.Category.info,
-        urgency=notifications.Urgency.normal,
-        reason=notifications.Reason.participant,
-    )
-    notifications.register_kind(
-        KIND_SLA_BREACHED,
-        category=notifications.Category.warning,
-        urgency=notifications.Urgency.high,
-        reason=notifications.Reason.watching,
-    )
+    # Nothing to register: the kind catalogue is gone and the axes ride each
+    # emit (see AXES above). ``register_kind`` survives as a deprecated shim for
+    # a wiring that has not been converted, and this one has.
 
     # Delivery channel. The logging adapter is the package's own, and is the
     # honest default for a reference host: a real one registers an email or chat
