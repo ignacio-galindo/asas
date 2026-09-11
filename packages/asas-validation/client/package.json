@@ -1,0 +1,21 @@
+{
+  "name": "@asas/validation-client",
+  "version": "0.12.0",
+  "description": "Browser mirror of asas-validation: evaluate the rules served by GET /validation/rules so a form refuses exactly what the server refuses.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./asas-validation.js",
+  "types": "./asas-validation.d.ts",
+  "exports": {
+    ".": {
+      "types": "./asas-validation.d.ts",
+      "default": "./asas-validation.js"
+    }
+  },
+  "files": ["asas-validation.js", "asas-validation.d.ts", "README.md"],
+  "sideEffects": false,
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": { "node": ">=20" }
+}

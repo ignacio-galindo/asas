@@ -106,6 +106,24 @@ jobs:
           ASAS_REQUIRE_AZURE: ${{ matrix.package == 'asas-storage' && '1' || '' }}
         run: pytest -q
 
+  # asas-validation ships a browser client (packages/asas-validation/client) that
+  # must give the same answers as the Python engine. Both suites execute the shared
+  # conformance/cases.json; this leg is the JavaScript half. Zero npm dependencies,
+  # so no install step — node's built-in runner only.
+  validation-client:
+    name: asas-validation browser client
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Run tests
+        working-directory: packages/asas-validation/client
+        run: node --test
+
   # asas-cli owns no schema and touches no database — it generates text files
   # and edits a pyproject.toml. Running it through the sqlite/postgres matrix
   # above would just execute the identical suite twice for no signal, so it

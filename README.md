@@ -12,7 +12,7 @@ repo (DR 0017, epic TEAMY-466).
 | Package | Import root | Shape |
 | --- | --- | --- |
 | `asas-lookups` | `asas_lookups` | table-owning: package Alembic chain (DR 0017 pilot) |
-| `asas-validation` | `asas_validation` | table-less contract variant |
+| `asas-validation` | `asas_validation` | table-less contract variant; ships a browser client (`client/`) |
 | `asas-storage` | `asas_storage` | table-less, router-less variant |
 | `asas-ratelimit` | `asas_ratelimit` | table-less, router-less variant |
 | `asas-jobs` | `asas_jobs` | table-owning: package Alembic chain |
@@ -43,7 +43,7 @@ and pinned by a conformance suite (`tests/test_host_contract.py` in every packag
 | `asas-jobs` | — | `migrate` | `ensure_schedule` | `configure_context_binder`, `configure_runner` |
 | `asas-search` | — | `migrate` | — | — |
 | `asas-storage` | — | — | — | `configure` |
-| `asas-validation` | `build_router` | — | — | — |
+| `asas-validation` | `build_router` | — | — | `configure` |
 | `asas-ratelimit` | — | — | — | `configure` |
 | `asas-mcp` | `build_mcp_app` | — | — | — |
 

@@ -1,0 +1,52 @@
+{
+  "$comment": "Shared by tests/test_conformance.py and client/test/conformance.test.js. One rule per case; values are ISO strings; `today` is fixed so both engines see the same calendar. `expect` is the list of violated codes (empty = valid). `record` fields not in `changes` are the persisted row; `context` supplies namespaced parent fields. Add a case here, never only on one side.",
+  "cases": [
+    {"name": "not_future rejects tomorrow", "rule": {"kind": "not_future", "fields": ["dob"], "code": "m.dob_future"}, "today": "2026-09-11", "changes": {"dob": "2026-09-12"}, "expect": ["m.dob_future"]},
+    {"name": "not_future accepts today", "rule": {"kind": "not_future", "fields": ["dob"], "code": "m.dob_future"}, "today": "2026-09-11", "changes": {"dob": "2026-09-11"}, "expect": []},
+    {"name": "not_past rejects yesterday", "rule": {"kind": "not_past", "fields": ["due"], "code": "m.due_past"}, "today": "2026-09-11", "changes": {"due": "2026-09-10"}, "expect": ["m.due_past"]},
+    {"name": "not_past accepts today", "rule": {"kind": "not_past", "fields": ["due"], "code": "m.due_past"}, "today": "2026-09-11", "changes": {"due": "2026-09-11"}, "expect": []},
+
+    {"name": "order rejects end before start", "rule": {"kind": "order", "fields": ["start", "end"], "code": "m.order"}, "today": "2026-09-11", "changes": {"start": "2026-01-02", "end": "2026-01-01"}, "expect": ["m.order"], "expect_field": "end"},
+    {"name": "order accepts equal", "rule": {"kind": "order", "fields": ["start", "end"], "code": "m.order"}, "today": "2026-09-11", "changes": {"start": "2026-01-01", "end": "2026-01-01"}, "expect": []},
+    {"name": "order strict rejects equal", "rule": {"kind": "order", "fields": ["start", "end"], "code": "m.order_strict", "params": {"strict": true}}, "today": "2026-09-11", "changes": {"start": "2026-01-01", "end": "2026-01-01"}, "expect": ["m.order_strict"]},
+    {"name": "order strict accepts later", "rule": {"kind": "order", "fields": ["start", "end"], "code": "m.order_strict", "params": {"strict": true}}, "today": "2026-09-11", "changes": {"start": "2026-01-01", "end": "2026-01-02"}, "expect": []},
+    {"name": "order reads the untouched field from the record", "rule": {"kind": "order", "fields": ["start", "end"], "code": "m.order"}, "today": "2026-09-11", "record": {"start": "2026-03-01"}, "changes": {"end": "2026-02-28"}, "expect": ["m.order"]},
+    {"name": "order skipped when the other field is null", "rule": {"kind": "order", "fields": ["start", "end"], "code": "m.order"}, "today": "2026-09-11", "record": {"start": null}, "changes": {"end": "2026-02-28"}, "expect": []},
+    {"name": "untouched rule never fires on pre-existing bad data", "rule": {"kind": "not_future", "fields": ["dob"], "code": "m.dob_future"}, "today": "2026-09-11", "record": {"dob": "2030-01-01"}, "changes": {"name": "x"}, "expect": []},
+    {"name": "empty string counts as absent", "rule": {"kind": "not_future", "fields": ["dob"], "code": "m.dob_future"}, "today": "2026-09-11", "changes": {"dob": ""}, "expect": []},
+
+    {"name": "max_age rejects older than N years", "rule": {"kind": "max_age", "fields": ["dob"], "code": "m.too_old", "params": {"years": 100}}, "today": "2026-09-11", "changes": {"dob": "1926-09-10"}, "expect": ["m.too_old"]},
+    {"name": "max_age accepts exactly N years", "rule": {"kind": "max_age", "fields": ["dob"], "code": "m.too_old", "params": {"years": 100}}, "today": "2026-09-11", "changes": {"dob": "1926-09-11"}, "expect": []},
+    {"name": "min_age rejects under N years", "rule": {"kind": "min_age", "fields": ["dob"], "code": "m.too_young", "params": {"years": 18}}, "today": "2026-09-11", "changes": {"dob": "2008-09-12"}, "expect": ["m.too_young"]},
+    {"name": "min_age accepts the birthday itself", "rule": {"kind": "min_age", "fields": ["dob"], "code": "m.too_young", "params": {"years": 18}}, "today": "2026-09-11", "changes": {"dob": "2008-09-11"}, "expect": []},
+    {"name": "min_age on Feb 29 today clamps to Feb 28", "rule": {"kind": "min_age", "fields": ["dob"], "code": "m.too_young", "params": {"years": 18}}, "today": "2028-02-29", "changes": {"dob": "2010-02-28"}, "expect": []},
+    {"name": "min_age on Feb 29 today rejects Mar 1", "rule": {"kind": "min_age", "fields": ["dob"], "code": "m.too_young", "params": {"years": 18}}, "today": "2028-02-29", "changes": {"dob": "2010-03-01"}, "expect": ["m.too_young"]},
+    {"name": "max_age on Feb 29 today clamps to Feb 28", "rule": {"kind": "max_age", "fields": ["dob"], "code": "m.too_old", "params": {"years": 4}}, "today": "2028-02-29", "changes": {"dob": "2024-02-27"}, "expect": ["m.too_old"]},
+
+    {"name": "max_future years rejects too far ahead", "rule": {"kind": "max_future", "fields": ["planned"], "code": "m.too_far", "params": {"years": 5}}, "today": "2026-09-11", "changes": {"planned": "2031-09-12"}, "expect": ["m.too_far"]},
+    {"name": "max_future years accepts the boundary", "rule": {"kind": "max_future", "fields": ["planned"], "code": "m.too_far", "params": {"years": 5}}, "today": "2026-09-11", "changes": {"planned": "2031-09-11"}, "expect": []},
+    {"name": "max_future days rejects", "rule": {"kind": "max_future", "fields": ["planned"], "code": "m.too_far", "params": {"days": 30}}, "today": "2026-09-11", "changes": {"planned": "2026-10-12"}, "expect": ["m.too_far"]},
+    {"name": "max_future days accepts across a month end", "rule": {"kind": "max_future", "fields": ["planned"], "code": "m.too_far", "params": {"days": 30}}, "today": "2026-09-11", "changes": {"planned": "2026-10-11"}, "expect": []},
+    {"name": "max_future years+days combine, years first", "rule": {"kind": "max_future", "fields": ["planned"], "code": "m.too_far", "params": {"years": 1, "days": 1}}, "today": "2028-02-29", "changes": {"planned": "2029-03-01"}, "expect": []},
+    {"name": "max_future years+days boundary rejects one past", "rule": {"kind": "max_future", "fields": ["planned"], "code": "m.too_far", "params": {"years": 1, "days": 1}}, "today": "2028-02-29", "changes": {"planned": "2029-03-02"}, "expect": ["m.too_far"]},
+
+    {"name": "not_before rejects earlier than bound", "rule": {"kind": "not_before", "fields": ["start"], "code": "m.pre_epoch", "params": {"date": "2000-01-01"}}, "today": "2026-09-11", "changes": {"start": "1999-12-31"}, "expect": ["m.pre_epoch"]},
+    {"name": "not_before accepts the bound", "rule": {"kind": "not_before", "fields": ["start"], "code": "m.pre_epoch", "params": {"date": "2000-01-01"}}, "today": "2026-09-11", "changes": {"start": "2000-01-01"}, "expect": []},
+    {"name": "not_after rejects later than bound", "rule": {"kind": "not_after", "fields": ["start"], "code": "m.post_bound", "params": {"date": "2099-12-31"}}, "today": "2026-09-11", "changes": {"start": "2100-01-01"}, "expect": ["m.post_bound"]},
+    {"name": "not_after accepts the bound", "rule": {"kind": "not_after", "fields": ["start"], "code": "m.post_bound", "params": {"date": "2099-12-31"}}, "today": "2026-09-11", "changes": {"start": "2099-12-31"}, "expect": []},
+
+    {"name": "max_span days rejects a window too long", "rule": {"kind": "max_span", "fields": ["start", "end"], "code": "m.window", "params": {"days": 14}}, "today": "2026-09-11", "changes": {"start": "2026-09-01", "end": "2026-09-16"}, "expect": ["m.window"], "expect_field": "end"},
+    {"name": "max_span days accepts the boundary", "rule": {"kind": "max_span", "fields": ["start", "end"], "code": "m.window", "params": {"days": 14}}, "today": "2026-09-11", "changes": {"start": "2026-09-01", "end": "2026-09-15"}, "expect": []},
+    {"name": "max_span years accepts the boundary", "rule": {"kind": "max_span", "fields": ["start", "end"], "code": "m.window", "params": {"years": 2}}, "today": "2026-09-11", "changes": {"start": "2024-02-29", "end": "2026-02-28"}, "expect": []},
+    {"name": "max_span years rejects one day past the clamped boundary", "rule": {"kind": "max_span", "fields": ["start", "end"], "code": "m.window", "params": {"years": 2}}, "today": "2026-09-11", "changes": {"start": "2024-02-29", "end": "2026-03-01"}, "expect": ["m.window"]},
+    {"name": "min_span rejects a window too short", "rule": {"kind": "min_span", "fields": ["start", "end"], "code": "m.notice", "params": {"days": 7}}, "today": "2026-09-11", "changes": {"start": "2026-09-01", "end": "2026-09-07"}, "expect": ["m.notice"]},
+    {"name": "min_span accepts the boundary", "rule": {"kind": "min_span", "fields": ["start", "end"], "code": "m.notice", "params": {"days": 7}}, "today": "2026-09-11", "changes": {"start": "2026-09-01", "end": "2026-09-08"}, "expect": []},
+
+    {"name": "namespaced parent field reads context", "rule": {"kind": "order", "fields": ["parent.start", "when"], "code": "c.before_parent"}, "today": "2026-09-11", "changes": {"when": "2026-01-01"}, "context": {"parent.start": "2026-02-01"}, "expect": ["c.before_parent"], "expect_field": "when"},
+    {"name": "namespaced parent field without context skips", "rule": {"kind": "order", "fields": ["parent.start", "when"], "code": "c.before_parent"}, "today": "2026-09-11", "changes": {"when": "2026-01-01"}, "expect": []},
+
+    {"name": "message renders params", "rule": {"kind": "min_age", "fields": ["dob"], "code": "m.too_young", "params": {"years": 21}, "message": "Must be at least {years} years old ({unknown} stays)."}, "today": "2026-09-11", "changes": {"dob": "2020-01-01"}, "expect": ["m.too_young"], "expect_message": "Must be at least 21 years old ({unknown} stays)."},
+    {"name": "datetime string reduces to its date", "rule": {"kind": "not_future", "fields": ["at"], "code": "m.at_future"}, "today": "2026-09-11", "changes": {"at": "2026-09-11T23:59:00"}, "expect": []},
+    {"name": "datetime string on the next day is future", "rule": {"kind": "not_future", "fields": ["at"], "code": "m.at_future"}, "today": "2026-09-11", "changes": {"at": "2026-09-12T00:00:00"}, "expect": ["m.at_future"]}
+  ]
+}
