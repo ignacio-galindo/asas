@@ -97,13 +97,11 @@ read and to leave only when the recipient acts on it or files it away — an
 | --- | --- | --- |
 | `state` | `open` (un-archived) · `archived` · `all` | `open` |
 | `unread_only` | bool | `false` |
-| `nature` | `action` · `info` · `warning` | all |
 
-(`category` is accepted as a deprecated alias for `nature` for one release.)
-
-So `?state=open&nature=action` is "still needs me", `?state=archived` is the
-history, and `?unread_only=true` is the classic feed. `total` reflects the
-filters; **`unread_count` never does** — it is unread-and-un-archived on every
+There is no presentation filter: `nature` left the package in 0.18.0, and a host
+that wants one keeps it on a row of its own. `?state=open&unread_only=true` is
+"still needs me", `?state=archived` is the history, and `?unread_only=true` is
+the classic feed. `total` reflects the filters; **`unread_count` never does** — it is unread-and-un-archived on every
 response, so a badge fed from any list call agrees with every other.
 
 Writes: `POST /{id}/read`, `/read-all`, `/{id}/archive`, `/{id}/unarchive`, and

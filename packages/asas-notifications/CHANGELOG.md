@@ -7,6 +7,26 @@ Release procedure and the historical tag mapping: [`RELEASING.md`](../../RELEASI
 
 ## 0.19.0 — 2026-09-04
 
+### Joined onto 0.16.1: one migration chain for both lines
+
+This line numbered its migrations ``0005`` to ``0010`` while upstream shipped its
+own ``0005`` (platform-topic uniqueness, 0.16.1), so two revisions shared an id.
+The chain is now linear: ``0004`` → ``0005`` (platform-topic uniqueness) →
+``0005_opaque_identity`` → ``0006`` (locale) → ``0007`` … ``0010`` → ``0011``.
+
+- **``0011`` repeats ``0005``'s index idempotently**, because a database stamped
+  ``0010`` by this line is already past ``0005`` in Alembic's eyes and would
+  otherwise never get it. A no-op on a database that came up the upstream line.
+- **Every stamp in the field keeps its meaning**: ``0006`` to ``0010`` are
+  unchanged, and only the opaque-identity revision took a new id.
+- **Known limit:** a database stamped at this line's own ``0005`` (opaque identity
+  applied, nothing after) is indistinguishable from upstream's ``0005``. No
+  released version stopped there.
+- Verified on Postgres from both directions: a database built by the pre-join
+  line at ``0010``, and one built by 0.16.1 at ``0005``, both reach ``0011`` with
+  the same schema, and a second run is a no-op.
+
+
 ### `importance` is a catalogue, not an enum
 
 The rungs are rows in a new `notification_importance` table now, seeded with

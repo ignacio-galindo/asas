@@ -94,7 +94,7 @@ def test_coalesce_fold_keeps_template_and_data_paired(session):
     """The fold IS the latest event: its template and data travel together.
     Keeping a previous fold's data under the new fold's template would hand
     U-4's renderer a pairing no single emit ever produced."""
-    kw = dict(urgency="low", entity_type="job", entity_id=8, coalesce_unread=True)
+    kw = dict(importance="low", entity_type="job", entity_id=8, coalesce_unread=True)
     first = emit_axes(session, [1], "job.update", data={"v": 1}, title="v1", **kw)[0]
     folded = emit_axes(
         session, [1], "job.update", template="job_updated", title="v2", **kw

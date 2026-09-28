@@ -26,8 +26,8 @@ suite is SQLite-only sees nothing. Postgres raises
 package's own suite passed on SQLite and failed on Postgres for exactly that
 reason while this change was being written.
 
-Revision ID: 0005
-Revises: 0004
+Revision ID: 0005_opaque_identity
+Revises: 0005
 Create Date: 2026-09-02
 
 """
@@ -36,8 +36,11 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0005"
-down_revision: Union[str, Sequence[str], None] = "0004"
+revision: str = "0005_opaque_identity"
+# After upstream's 0005 (platform-topic uniqueness), not beside it. The id is
+# its own and not "0006" because 0006 onward are already stamped on databases
+# that ran this chain before the two lines were joined; see 0011.
+down_revision: Union[str, Sequence[str], None] = "0005"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

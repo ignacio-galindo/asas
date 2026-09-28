@@ -16,8 +16,8 @@ additive and changes nothing until a host configures the seam.
 16 characters holds a BCP-47 tag with room to spare (``ar``, ``ar-AE``,
 ``zh-Hant-TW``).
 
-Revision ID: 0004_locale
-Revises: 0003
+Revision ID: 0006
+Revises: 0005_opaque_identity
 Create Date: 2026-09-03
 
 """
@@ -26,8 +26,8 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0004_locale"
-down_revision: Union[str, Sequence[str], None] = "0003"
+revision: str = "0006"
+down_revision: Union[str, Sequence[str], None] = "0005_opaque_identity"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
