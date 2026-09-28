@@ -33,7 +33,7 @@ FALLBACK_TAGS: dict[str, str] = {
     "asas-notifications": "v0.16.1",
     "asas-ratelimit": "v0.11.0",
     "asas-search": "v0.11.1",
-    "asas-storage": "v0.15.0",
+    "asas-storage": "v0.15.1",
     "asas-validation": "v0.12.0",
     "asas-workflow": "v0.11.2",
 }

@@ -54,6 +54,12 @@ stat, chunks = storage().fetch(key)     # stat + stream in one backend call
 storage().delete_prefix(f"orgs/{org}/photos/{member_id}")
 ```
 
+`safe_filename` keeps only ASCII by default, the one charset every backend
+accepts. On AWS S3, Azure Blob or `LocalStorage`, pass `ascii_only=False` to keep
+letters and digits in any script, so Arabic names stay readable; never on
+Supabase Storage, which rejects any non-ASCII key. Both modes cap the result at
+160 UTF-8 bytes, extension kept.
+
 Tests point the singleton at a tmp dir: `set_storage(LocalStorage(tmp_path))`
 (`set_storage(None)` resets to lazy re-selection via the factory).
 
@@ -69,7 +75,7 @@ it (which presents as the whole leg quietly skipping, not as a failure):
 docker run -d --rm --name azurite -p 10000:10000 mcr.microsoft.com/azure-storage/azurite:3.36.0 azurite-blob --blobHost 0.0.0.0 --skipApiVersionCheck
 ```
 
-A full local run is `45 passed`; if you see skips, the emulator isn't up. In CI the
+A full local run is `99 passed`; if you see skips, the emulator isn't up. In CI the
 skip is promoted to a hard failure (`ASAS_REQUIRE_AZURE=1`), so the azure leg can
 never vanish silently.
 
