@@ -84,7 +84,7 @@ Every Asas package holds to the same twelve principles, in no particular order:
 | `asas-notifications` | `asas_notifications` | table-owning + router |
 | `asas-search` | `asas_search` | dialect-branched chain (PG deep tier) |
 | `asas-mcp` | `asas_mcp` | protocol-only |
-| `asas-graph` | `asas_graph` | table-less, router-less (AI tier: Microsoft Graph, Teams meetings) |
+| `asas-graph` | `asas_graph` | table-less, router-less (AI tier: Microsoft Graph, Teams meetings, free/busy) |
 | `asas-cli` | `asas_cli` | tooling |
 
 Packages version independently; the current version of each lives in its

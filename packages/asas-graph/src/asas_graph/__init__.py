@@ -1,4 +1,5 @@
-"""Asas Microsoft Graph — sign in as the application, talk to Graph, book Teams meetings.
+"""Asas Microsoft Graph: sign in as the application, talk to Graph, book Teams
+meetings, read free/busy.
 
 Extracted from a Microsoft 365 host's working implementation (the AI Recruiter
 engine), generalised: settings are an explicit object rather than a settings
@@ -18,10 +19,17 @@ is an object the host constructs and passes around:
   :class:`StaticTokenProvider`; any object with ``async access_token()`` fits.
 - :class:`TeamsMeetings` — ``create``/``reschedule``/``cancel`` on an
   organiser's calendar; :class:`Attendee`, :class:`Meeting`.
+- :class:`FreeBusyReader`: ``get_schedule`` over Graph ``getSchedule`` for
+  any number of mailboxes (batched at Graph's cap of 100), fail-closed:
+  :class:`MailboxSchedule`, :class:`BusyInterval`, :class:`FreeBusyStatus`,
+  :class:`WorkingHours`, :func:`resolve_time_zone` (IANA or Windows names).
+- :class:`SlotFinder`: deterministic common free slots from those schedules
+  (window, duration, step, working hours); :class:`Slot`. No ranking.
 - Errors: :class:`GraphError` › :class:`GraphConfigError`,
   :class:`GraphAuthError`, :class:`GraphRequestError`, :class:`MeetingError` ›
   :class:`MeetingCreationError`, :class:`MeetingUpdateError`,
-  :class:`MeetingCancelError`.
+  :class:`MeetingCancelError`; :class:`FreeBusyError` ›
+  :class:`UnmappedFreeBusyStatusError`.
 """
 
 from __future__ import annotations
@@ -29,6 +37,7 @@ from __future__ import annotations
 from .auth import ClientCredentialTokenProvider, StaticTokenProvider, TokenProvider
 from .client import GraphClient, default_ssl_context
 from .errors import (
+    FreeBusyError,
     GraphAuthError,
     GraphConfigError,
     GraphError,
@@ -37,29 +46,49 @@ from .errors import (
     MeetingCreationError,
     MeetingError,
     MeetingUpdateError,
+    UnmappedFreeBusyStatusError,
+)
+from .free_busy import (
+    BusyInterval,
+    FreeBusyReader,
+    FreeBusyStatus,
+    MailboxSchedule,
+    WorkingHours,
+    resolve_time_zone,
 )
 from .meetings import Attendee, Meeting, TeamsMeetings
 from .settings import GraphSettings
+from .slots import Slot, SlotFinder
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 __all__ = [
     "Attendee",
+    "BusyInterval",
     "ClientCredentialTokenProvider",
+    "FreeBusyError",
+    "FreeBusyReader",
+    "FreeBusyStatus",
     "GraphAuthError",
     "GraphClient",
     "GraphConfigError",
     "GraphError",
     "GraphRequestError",
     "GraphSettings",
+    "MailboxSchedule",
     "Meeting",
     "MeetingCancelError",
     "MeetingCreationError",
     "MeetingError",
     "MeetingUpdateError",
+    "Slot",
+    "SlotFinder",
     "StaticTokenProvider",
     "TeamsMeetings",
     "TokenProvider",
+    "UnmappedFreeBusyStatusError",
+    "WorkingHours",
     "default_ssl_context",
+    "resolve_time_zone",
     "__version__",
 ]
