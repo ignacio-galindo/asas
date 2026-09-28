@@ -37,7 +37,13 @@ from typing import Any, Optional, Sequence
 from sqlalchemy import text
 from sqlmodel import Session, select
 
-from asas_audit.chain import VerifyReport, chain_payload, compute_hash, verify_rows
+from asas_audit.chain import (
+    CURRENT_ENCODING,
+    VerifyReport,
+    chain_payload,
+    compute_hash,
+    verify_rows,
+)
 from asas_audit.models import AuditEvent
 
 #: Taken before the tail read, released when the caller's transaction ends.
@@ -101,6 +107,9 @@ def append(
         resource_id=str(resource_id),
         payload=dict(payload or {}),
         hash_prev=hash_prev,
+        # Always the current encoding: a legacy encoding exists to verify rows
+        # somebody else wrote, never to write new ones.
+        encoding=CURRENT_ENCODING,
     )
     if occurred_at is not None:
         row.occurred_at = occurred_at
@@ -116,6 +125,7 @@ def append(
             resource_id=row.resource_id,
             payload=row.payload,
             occurred_at=row.occurred_at,
+            encoding=row.encoding,
         ),
     )
     session.add(row)
@@ -126,7 +136,9 @@ def verify(session: Session, org_id: Any) -> VerifyReport:
     """Re-derive one tenant's whole chain and report where, if anywhere, it stops
     adding up.
 
-    Reads in ``seq`` order, which is the order the chain was written in. The
+    Reads in ``seq`` order, which is the order the chain was written in. Each
+    row is recomputed with the encoding it names, so an adopted chain (legacy
+    rows, then this package's) verifies as one history. The
     arithmetic is :func:`asas_audit.chain.verify_rows`, which is pure, so the
     tamper cases are asserted without a database and this function only has to
     get the query right.

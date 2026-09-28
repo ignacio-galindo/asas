@@ -24,6 +24,13 @@ tail row does not prevent it: it forks the chain, silently, and surfaces later a
 a verification break that looks like tampering over data nobody touched. A
 per-tenant advisory lock taken **before** the tail read is what works.
 
+**A host can hand over a hash chain it already keeps.** Every row names the
+canonical encoding that produced its hash, and the verifier recomputes each row
+with its own. A host whose older chain hashed slightly different bytes registers
+a :class:`ChainEncoding` that reproduces them, and its history keeps verifying
+with this package's rows appended after it. The README's "Adopting an existing
+chain" section is the procedure.
+
 Host contract surface (table-owning + router variant):
 :func:`migrate` (package Alembic chain, adopt-or-create), :func:`build_router`,
 and the service functions below. No ``seed``: an audit log with seeded rows would
@@ -37,11 +44,17 @@ is exactly the drift the family's parity tests exist to prevent.
 """
 
 from asas_audit.chain import (
+    CURRENT_ENCODING,
     ChainBreak,
+    ChainEncoding,
+    UnknownEncodingError,
     VerifyReport,
     canonical_bytes,
+    canonical_timestamp,
     chain_payload,
     compute_hash,
+    get_encoding,
+    register_encoding,
     verify_rows,
 )
 from asas_audit.migrate import migrate
@@ -49,18 +62,24 @@ from asas_audit.models import AuditEvent
 from asas_audit.router import build_router
 from asas_audit.service import append, history, verify
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 __all__ = [
     "append",
     "AuditEvent",
     "build_router",
     "canonical_bytes",
+    "canonical_timestamp",
     "chain_payload",
     "ChainBreak",
+    "ChainEncoding",
     "compute_hash",
+    "CURRENT_ENCODING",
+    "get_encoding",
     "history",
     "migrate",
+    "register_encoding",
+    "UnknownEncodingError",
     "verify",
     "verify_rows",
     "VerifyReport",

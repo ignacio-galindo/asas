@@ -116,6 +116,92 @@ the database, which is what `verify` walks. `id` is the event identity, a UUID
 string, which is what goes in a URL and into the hash, so the fingerprint does not
 depend on the sequence number the database happened to assign.
 
+## Adopting an existing chain
+
+A host that already keeps its own hash-chained audit table can hand it over
+without rewriting a stored fingerprint, which the append-only trigger would
+refuse anyway and which would prove nothing if it succeeded. Every row names the
+**encoding** that produced its hash (`audit_event.encoding`), and `verify`
+recomputes each row with its own. New rows always use `CURRENT_ENCODING`
+(`"asas-audit/1"`, the bytes this package has always written). Your old rows use
+an encoding you register:
+
+```python
+import asas_audit as audit
+
+# at import time, before any verify
+audit.register_encoding(audit.ChainEncoding("myapp/1", keys={"org_id": "tenant_id"}))
+```
+
+An encoding can rename keys of the hashed dict and choose how `occurred_at` is
+spelled, and nothing else: the JSON rules and the SHA-256 link are shared by
+every encoding, so a registered one cannot weaken what the chain proves. Keep the
+default `timestamp` (`canonical_timestamp`) if your writer hashed aware UTC
+values: it gives the same string as `isoformat()` for those, and unlike a bare
+`isoformat()` it survives a driver that returns the moment naive (SQLite) or in
+the server's zone (psycopg on a Postgres whose `TimeZone` is not UTC). Pass your
+own module-level function only if your writer hashed another offset.
+
+**What has to be true of the old rows**, or they will not verify:
+
+- `hash_current = sha256(hash_prev || json.dumps(d, sort_keys=True,
+  separators=(",", ":"), default=str))`, with `hash_prev` NULL on each tenant's
+  first row, chained per tenant in ascending `seq`.
+- `d` holds exactly the eight chain fields (`id`, `org_id`, `actor`, `action`,
+  `resource_type`, `resource_id`, `payload`, `occurred_at`), possibly under other
+  key names, with every id as `str(value)`. The stored tenant value must be the
+  same string you pass to `verify`.
+- The stored `payload` reads back to a dict that dumps to the same JSON as the one
+  hashed. Values your writer stringified through `default=str` must have been
+  stored as that string. JSONB can break this for a float such as `1e20`, which
+  comes back as an integer; such a row fails your current verifier too.
+
+**The procedure**, in your own migration chain:
+
+1. Stop the legacy writer. Its advisory lock is not this package's, so the two
+   writing at once fork the chain.
+2. Rename and retype the table to this package's shape (below), and add
+   `encoding varchar(32) NOT NULL DEFAULT '<your legacy name>'`. The default
+   labels every existing row in the DDL itself, which neither the trigger nor row
+   level security can interfere with, where an UPDATE would be refused by one and
+   silently filtered by the other.
+3. Re-create the tenant policy on the retyped column with
+   `asas_tenancy.enable_rls("audit_event", column="org_id",
+   column_type="character varying")`.
+4. Call `audit.migrate(engine)`. It adopts the table (the baseline is stamped, not
+   run), finds your `encoding` column and leaves it, default included: that
+   default only ever applies to a row written by code that does not know the
+   column exists, which on your table is the legacy writer.
+5. Write through `audit.append` from then on. Its first row links to your last
+   fingerprint like any other row.
+
+| your column (typical) | this package | change |
+| --- | --- | --- |
+| `tenant_id uuid` + FK | `org_id varchar(64)` | rename; `USING tenant_id::text`; drop the FK and the policy first, both pin the type |
+| `created_at timestamptz` | `occurred_at timestamptz` | rename |
+| `id uuid` | `id varchar(64)`, unique | `USING id::text`; staying the primary key is fine |
+| `resource_id uuid` | `resource_id varchar(64)` | `USING resource_id::text` |
+| `seq bigint`, sequence default | `seq`, chain order | keep; it need not be the primary key, only increasing |
+| `payload jsonb` | `payload` JSON | keep; JSONB reads and writes through the JSON type |
+| `hash_prev`, `hash_current bytea` | same | keep |
+| `action varchar(128)` | `action` | keep; wider than the package's 100 is harmless |
+| (none) | `encoding varchar(32)` | add, defaulting to your legacy name |
+
+Your own append-only trigger stays and keeps protecting the table, because the
+baseline that would have created this package's is stamped rather than run. The
+package's `ix_audit_event_actor` index is not created either; add it if you filter
+history by actor. `tests/test_legacy_encoding.py` runs this recipe on Postgres
+against a table built the way such a host builds it.
+
+**What the verifier reports.** An adopted chain verifies as one history:
+`events_checked` counts both kinds of row, and every `ChainBreak` carries the
+`encoding` it was checked under (so does each event served by the router). A row
+naming an encoding this process has not registered raises
+`UnknownEncodingError` rather than reporting a break, because it is a missing
+registration, not tampering. An encoding that does not reproduce your bytes shows
+up as every legacy row reporting "edited" at once while this package's rows pass,
+which is the signature of a wrong encoding rather than of an edit.
+
 ## Dependency on `asas-tenancy`
 
 This package protects its own table through `asas_tenancy.enable_rls` inside its
@@ -147,7 +233,7 @@ TEST_DATABASE_URL=postgresql+psycopg://asas_rls@localhost/asas_audit_test \
   ASAS_REQUIRE_RLS=1 pytest -q
 ```
 
-A full run is `40 passed, 13 skipped` on SQLite and `53 passed` on Postgres as a
+A full run is `62 passed, 14 skipped` on SQLite and `76 passed` on Postgres as a
 `NOBYPASSRLS` role.
 
 See the repo README for the full host contract.

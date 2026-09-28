@@ -44,6 +44,9 @@ class AuditEventRead(BaseModel):
     payload: dict[str, Any]
     occurred_at: datetime
     hash_current: str
+    #: The canonical encoding the fingerprint was computed with, which a reader
+    #: checking the chain themselves needs in order to rebuild the bytes.
+    encoding: str
 
 
 class ChainBreakRead(BaseModel):
@@ -53,6 +56,7 @@ class ChainBreakRead(BaseModel):
     expected_hash: str
     stored_hash: str
     detail: str
+    encoding: str
 
 
 class VerifyReportRead(BaseModel):
@@ -107,6 +111,7 @@ def build_router(get_session: Callable, *, tenant: Callable) -> APIRouter:
                 payload=r.payload,
                 occurred_at=r.occurred_at,
                 hash_current=bytes(r.hash_current).hex(),
+                encoding=r.encoding,
             )
             for r in rows
         ]
@@ -127,6 +132,7 @@ def build_router(get_session: Callable, *, tenant: Callable) -> APIRouter:
                     expected_hash=b.expected_hash_hex,
                     stored_hash=b.stored_hash_hex,
                     detail=b.detail,
+                    encoding=b.encoding,
                 )
                 for b in report.breaks
             ],

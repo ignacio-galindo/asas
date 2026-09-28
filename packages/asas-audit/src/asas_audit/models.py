@@ -32,6 +32,8 @@ from sqlalchemy import BigInteger, Column, Index, Integer, LargeBinary
 from sqlalchemy import JSON
 from sqlmodel import Field, SQLModel
 
+from asas_audit.chain import CURRENT_ENCODING
+
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
@@ -105,3 +107,12 @@ class AuditEvent(SQLModel, table=True):
         default=None, sa_column=Column(LargeBinary(32), nullable=True)
     )
     hash_current: bytes = Field(sa_column=Column(LargeBinary(32), nullable=False))
+
+    #: Which canonical encoding produced ``hash_current`` (see
+    #: :class:`asas_audit.chain.ChainEncoding`). Every row this package writes
+    #: says :data:`~asas_audit.chain.CURRENT_ENCODING`; rows a host adopted from
+    #: its own older chain say the name of the legacy encoding it registered.
+    #: Not itself hashed, since a legacy row's bytes cannot include it; changing
+    #: it is an UPDATE, which the trigger refuses, and would only make the row
+    #: stop verifying.
+    encoding: str = Field(default=CURRENT_ENCODING, max_length=32)

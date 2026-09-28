@@ -1,9 +1,39 @@
 # Changelog — `asas-audit`
 
-Versions follow semver, and the git tag matches this file: `asas-audit/v0.1.0`.
+Versions follow semver, and the git tag matches this file: `asas-audit/v0.1.1`.
 Pre-1.0, a breaking change bumps the **minor**.
 
 Release procedure and the historical tag mapping: [`RELEASING.md`](../../RELEASING.md).
+
+## 0.1.1 (unreleased)
+
+Additive: existing chains verify exactly as before, and a host that runs
+`migrate()` at boot has nothing else to do.
+
+- **Chain encodings: a host can hand over a hash chain it already keeps.** Every
+  row now names the canonical encoding that produced its hash, in a new
+  `audit_event.encoding` column, and `verify` recomputes each row with its own.
+  New rows always use `CURRENT_ENCODING` (`"asas-audit/1"`), which is byte for
+  byte what 0.1.0 wrote. A host whose older chain hashed slightly different bytes
+  registers a `ChainEncoding` that reproduces them (key renames and a timestamp
+  formatter, nothing else) with `register_encoding`, and its history keeps
+  verifying with this package's rows appended after it. The README's "Adopting
+  an existing chain" section is the procedure, including the column mapping.
+- **Migration `0002`** adds `encoding` with the current name as its column
+  default, so every existing row is labelled by the DDL itself. Not an UPDATE:
+  the append-only trigger would refuse one, and under forced row-level security
+  with no tenant pinned it would match nothing and succeed silently. If the
+  column already exists (a host that added it with its legacy name as the
+  default, which is the adoption procedure) the revision leaves it alone.
+- A row naming an encoding nobody registered raises **`UnknownEncodingError`**
+  from `verify` instead of reporting a break: it is a missing registration, not
+  tampering, and a whole adopted history reporting as rewritten is the false
+  alarm that gets a verifier switched off.
+- `ChainBreak.encoding`, and `encoding` on each event and each break the router
+  serves, so a reader checking the chain themselves knows which bytes to rebuild.
+- `canonical_timestamp` is now exported: it is the formatter an adopting host
+  normally keeps, because it matches `isoformat()` for aware UTC values and
+  survives a driver that returns the moment naive or in the server's zone.
 
 ## 0.1.0 — unreleased
 
