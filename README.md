@@ -2,7 +2,7 @@
 
 **Asas** ("foundation") is an embedded application foundation for FastAPI/SQLModel
 products: a family of self-contained backend packages — reference-data lookups,
-access control, validation, notifications, background jobs, workflow, search,
+access control, tamper-evident audit, validation, notifications, background jobs, workflow, search,
 storage, rate limiting, MCP tooling — that install *into* your application
 instead of standing beside it. Your database, your auth, your deployment; no
 broker, no Redis, no SaaS dependency, no second platform to operate. Extracted
@@ -85,6 +85,7 @@ Every Asas package holds to the same twelve principles, in no particular order:
 | `asas-search` | `asas_search` | dialect-branched chain (PG deep tier) |
 | `asas-mcp` | `asas_mcp` | protocol-only |
 | `asas-cli` | `asas_cli` | tooling |
+| `asas-audit` | `asas_audit` | table-owning (package Alembic chain) |
 
 Packages version independently; the current version of each lives in its
 `CHANGELOG.md` and its `pyproject.toml`, tagged `<package>/vX.Y.Z` (see

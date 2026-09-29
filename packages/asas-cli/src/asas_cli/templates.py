@@ -86,6 +86,18 @@ SNIPPETS: dict[str, BootSnippet] = {
             ("rate_limit_overrides", "str", '""'),
         ),
     ),
+    "audit": BootSnippet(
+        imports=("import asas_audit",),
+        setup=(
+            "for _router in asas_audit.build_routers(get_session):",
+            "    app.include_router(_router)  # TODO: behind your own auth guard",
+            "# asas_audit.configure_org_resolver(my_org_resolver)  "
+            "# TODO: only if multi-tenant",
+            "# Append inside your business transaction: asas_audit.append(session, "
+            "action=..., resource_type=..., resource_id=..., actor=...)",
+        ),
+        boot=("asas_audit.migrate(engine)",),
+    ),
     "jobs": BootSnippet(
         imports=("import asas_jobs",),
         setup=(

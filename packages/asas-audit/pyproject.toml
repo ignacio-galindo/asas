@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "asas-cli"
-version = "0.2.0"
-description = "Developer CLI for Asas: pin a package into an existing project (`asas add`), or scaffold a new FastAPI project pre-wired for a chosen set of packages (`asas new`)."
+name = "asas-audit"
+version = "0.1.0"
+description = "Asas audit module: a tamper-evident, append-only audit log in the host's database, hash-chained per organisation, appended inside the caller's transaction, with database-level append-only triggers, a verifier and a package-owned Alembic chain."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
@@ -13,22 +13,24 @@ license-files = ["LICENSE", "NOTICE"]
 classifiers = [
     "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
+    "Framework :: FastAPI",
     "Intended Audience :: Developers",
 ]
 dependencies = [
-    "tomlkit>=0.12",
+    "sqlmodel>=0.0.21",
+    "alembic>=1.13",
+    "fastapi>=0.110,<1",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8",
+    "httpx>=0.27",
+    "psycopg2-binary>=2.9",
 ]
 
-[project.scripts]
-asas = "asas_cli.cli:main"
-
 [tool.hatch.build.targets.wheel]
-packages = ["src/asas_cli"]
+packages = ["src/asas_audit"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
