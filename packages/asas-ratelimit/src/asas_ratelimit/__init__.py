@@ -21,6 +21,13 @@ variant: no session dependency, no ``seed``/``migrate``/``build_routers``):
 - :func:`parse_overrides` — parse a ``"rule=count/window,…"`` deployment
   override string (malformed entries are logged and skipped).
 - :func:`reset` / :func:`clear_counters` — test isolation hooks.
+- :func:`configure_shared_bucket` — optional: one budget across every replica
+  through a store the host injects (``shared.py``); :func:`allow_async` /
+  :func:`check_async` spend from it and fall back to the in-process bucket
+  whenever it gives no answer. :func:`redis_shared_bucket` is a ready adapter
+  over a Redis client the host already runs.
+- :func:`client_address` — the proxy-safe client key (``X-Forwarded-For`` read
+  from the end, never the first entry).
 """
 
 from __future__ import annotations
@@ -34,16 +41,24 @@ from typing import Callable, Dict, Optional, Tuple
 
 from fastapi import HTTPException
 
-__version__ = "0.11.0"
+__version__ = "0.12.0"
 
 __all__ = [
+    "REDIS_TOKEN_BUCKET_LUA",
     "Rule",
+    "SharedBucket",
     "allow",
+    "allow_async",
+    "bucket_key",
     "check",
+    "check_async",
     "clear_counters",
+    "client_address",
     "configure",
+    "configure_shared_bucket",
     "declare",
     "parse_overrides",
+    "redis_shared_bucket",
     "reset",
     "rules",
     "__version__",
@@ -198,3 +213,20 @@ def check(rule_name: str, key: str) -> None:
             detail="Too many requests — try again later.",
             headers={"Retry-After": str(max(1, math.ceil(retry_after)))},
         )
+
+
+def _enabled_now() -> bool:
+    """The kill switch, for the shared path (``shared.py``)."""
+    return _enabled
+
+
+from .shared import (  # noqa: E402 - the shared path builds on everything above
+    REDIS_TOKEN_BUCKET_LUA,
+    SharedBucket,
+    allow_async,
+    bucket_key,
+    check_async,
+    client_address,
+    configure_shared_bucket,
+    redis_shared_bucket,
+)

@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "asas-ratelimit"
-version = "0.11.0"
-description = "Asas rate-limiting module: an in-process token-bucket engine with named, host-declared rules, a FastAPI-native 429 check, and an overrides-string parser for per-deployment tuning."
+version = "0.12.0"
+description = "Asas rate-limiting module: a token-bucket engine with named, host-declared rules, a FastAPI-native 429 check, an overrides-string parser, and an optional host-injected shared bucket (with a ready Redis adapter) for one budget across replicas."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
@@ -23,6 +23,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8",
+    "redis>=5",
 ]
 
 [tool.hatch.build.targets.wheel]

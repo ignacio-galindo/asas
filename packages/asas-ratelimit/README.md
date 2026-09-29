@@ -4,10 +4,30 @@ In-process rate limiting: a token-bucket engine over in-memory counters. The hos
 declares named `Rule`s at boot and calls `check(rule, key)` on the hot path — it
 either passes or raises a FastAPI-native 429 with a `Retry-After` header.
 
-Deliberately no Redis and no DB writes: a single-instance deployment gets exact
-limits from process memory; a scaled-out one gets per-instance limits (N× looser).
-The seam lets a shared backend replace the bucket store later without touching
-call sites.
+No Redis and no DB writes of its own: a single-instance deployment gets exact
+limits from process memory. A scaled-out one gets per-instance limits (N× looser)
+UNLESS the host injects a shared bucket, which makes it one budget across every
+replica and survives restarts:
+
+```python
+import redis.asyncio as redis
+import asas_ratelimit as ratelimit
+
+ratelimit.configure_shared_bucket(
+    ratelimit.redis_shared_bucket(redis.from_url(settings.redis_url)),
+    prefix=f"myapp:{settings.environment}:ratelimit:v1",
+)
+
+# async hot path: shared when the store answers, in-process when it does not
+await ratelimit.check_async("auth.login.ip", ratelimit.client_address(request, proxy_hops=1))
+```
+
+The store never sees the caller's key (it gets a hash), never decides when the
+kill switch is off or a rule is a hard block, and never fails a request: any
+failure or `None` answer falls back to the in-process bucket. Any async
+`(bucket_key, capacity, refill_per_second) -> (allowed, retry_after) | None`
+works as a store; the Redis adapter is one atomic Lua script on the server's
+clock.
 
 Table-less **and** router-less variant of the Asas host contract: no session
 dependency, no `seed`/`migrate`/`build_routers`. The host owns its rule catalog,
