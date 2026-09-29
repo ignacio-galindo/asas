@@ -86,6 +86,14 @@ SNIPPETS: dict[str, BootSnippet] = {
             ("rate_limit_overrides", "str", '""'),
         ),
     ),
+    "llm": BootSnippet(
+        imports=("import asas_llm",),
+        setup=(
+            "# asas_llm.configure_prompt_source(my_prompt_source, ttl_s=300, fetch_timeout_s=8)  "
+            "# TODO: your prompt store",
+            "# asas_llm.configure_usage_sink(my_usage_sink)  # TODO: metrics / cost accounting",
+        ),
+    ),
     "jobs": BootSnippet(
         imports=("import asas_jobs",),
         setup=(

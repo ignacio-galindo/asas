@@ -1,9 +1,14 @@
 # Changelog — `asas-cli`
 
-Versions follow semver, and the git tag matches this file: `asas-cli/v0.1.0`.
+Versions follow semver, and the git tag matches this file: `asas-cli/v0.2.0`.
 Pre-1.0, a breaking change bumps the **minor**.
 
 Release procedure and the historical tag mapping: [`RELEASING.md`](../../RELEASING.md).
+
+## 0.2.0 — 2026-09-29
+
+- Knows `asas-llm` (0.1.0): `asas add llm` and `asas new --with llm` pin it,
+  and the offline fallback tag is `asas-llm/v0.1.0`.
 
 ## 0.1.0 — 2026-08-27
 

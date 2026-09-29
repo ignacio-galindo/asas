@@ -105,6 +105,14 @@ _SPECS = [
         "Remote MCP server core (exposes the host to AI clients over MCP).",
         "protocol-only",
     ),
+    PackageSpec(
+        "llm",
+        "asas-llm",
+        "asas_llm",
+        "packages/asas-llm",
+        "Model-call helpers: strict schemas, typed parsing, retries, prompts.",
+        "table-less, router-less",
+    ),
 ]
 
 PACKAGES: dict[str, PackageSpec] = {spec.key: spec for spec in _SPECS}
