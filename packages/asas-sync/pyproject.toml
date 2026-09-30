@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "asas-cli"
-version = "0.2.0"
-description = "Developer CLI for Asas: pin a package into an existing project (`asas add`), or scaffold a new FastAPI project pre-wired for a chosen set of packages (`asas new`)."
+name = "asas-sync"
+version = "0.1.0"
+description = "Asas sync module: mirror a remote paginated collection into the host's tables incrementally, with walk orders that survive unstable tie order, an offset-ceiling re-anchor, a watermark that never passes the walk's start, two-miss deletion reconcile, resumable passes and a portable lease."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
@@ -16,19 +16,18 @@ classifiers = [
     "Intended Audience :: Developers",
 ]
 dependencies = [
-    "tomlkit>=0.12",
+    "sqlmodel>=0.0.21",
+    "alembic>=1.13",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8",
+    "psycopg2-binary>=2.9",
 ]
 
-[project.scripts]
-asas = "asas_cli.cli:main"
-
 [tool.hatch.build.targets.wheel]
-packages = ["src/asas_cli"]
+packages = ["src/asas_sync"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

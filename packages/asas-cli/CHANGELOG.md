@@ -1,9 +1,14 @@
 # Changelog — `asas-cli`
 
-Versions follow semver, and the git tag matches this file: `asas-cli/v0.1.0`.
+Versions follow semver, and the git tag matches this file: `asas-cli/v0.2.0`.
 Pre-1.0, a breaking change bumps the **minor**.
 
 Release procedure and the historical tag mapping: [`RELEASING.md`](../../RELEASING.md).
+
+## 0.2.0 — 2026-09-30
+
+- Knows `asas-sync` (0.1.0): `asas add sync` and `asas new --with sync` pin it,
+  and the offline fallback tag is `asas-sync/v0.1.0`.
 
 ## 0.1.0 — 2026-08-27
 

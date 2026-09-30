@@ -105,6 +105,14 @@ _SPECS = [
         "Remote MCP server core (exposes the host to AI clients over MCP).",
         "protocol-only",
     ),
+    PackageSpec(
+        "sync",
+        "asas-sync",
+        "asas_sync",
+        "packages/asas-sync",
+        "Incremental mirror of a remote paginated collection, with safe deletes.",
+        "table-owning, router-less",
+    ),
 ]
 
 PACKAGES: dict[str, PackageSpec] = {spec.key: spec for spec in _SPECS}
