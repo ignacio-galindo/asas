@@ -59,4 +59,4 @@ Table-less and router-less: no session, no migrations, no routes. The host
 injects its prompt store (`configure_prompt_source(async (name, label) ->
 Prompt)`) and, optionally, a usage sink.
 
-Extracted from the ai-recruiter engine (`base/llm`).
+Extracted from a production AI service's model-call layer and generalised.

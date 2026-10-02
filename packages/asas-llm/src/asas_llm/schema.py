@@ -1,7 +1,6 @@
 """Pydantic model -> the JSON schema a provider's STRICT structured output accepts.
 
-Ported from the ai-recruiter engine (``base/utils/pydantic.py``), which ported
-it from the OpenAI SDK to drop that dependency. Strict mode refuses schemas a
+Ported from a production AI service, which ported it from the OpenAI SDK to drop that dependency. Strict mode refuses schemas a
 plain ``model_json_schema()`` produces all the time, and each refusal is a 400
 at runtime, not a type error:
 

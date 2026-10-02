@@ -1,6 +1,6 @@
 """Asas LLM: the provider-agnostic parts of calling a model well.
 
-Extracted from the ai-recruiter engine, where each piece first failed in
+Extracted from a production AI service, where each piece first failed in
 production, and made independent of any SDK or framework (only pydantic):
 
 - :func:`to_strict_json_schema` / :func:`response_format` - a Pydantic model as

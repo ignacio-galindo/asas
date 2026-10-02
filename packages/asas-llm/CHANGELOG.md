@@ -7,9 +7,9 @@ Release procedure: [`RELEASING.md`](../../RELEASING.md).
 
 ## 0.1.0 — 2026-09-29
 
-- First release, extracted from the ai-recruiter engine (`base/llm/runner.py`,
-  `base/utils/pydantic.py`, `base/llm/prompts`, the transcription tracer) and
-  made framework-independent (pydantic only):
+- First release, extracted from a production AI service's model-call layer
+  (its runner, schema helpers, prompt handling and tracer) and made
+  framework-independent (pydantic only):
   - `to_strict_json_schema` / `response_format`, with the envelope name
     sanitised to what the API accepts;
   - `parse_structured` raises `EmptyOutputError` / `StructuredOutputError`
