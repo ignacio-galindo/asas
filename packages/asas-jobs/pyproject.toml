@@ -17,7 +17,7 @@ classifiers = [
     "Intended Audience :: Developers",
 ]
 dependencies = [
-    "sqlmodel>=0.0.21",
+    "sqlmodel>=0.0.21,<0.0.45",
     "alembic>=1.13",
 ]
 
