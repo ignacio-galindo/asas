@@ -7,8 +7,8 @@ Release procedure and the historical tag mapping: [`RELEASING.md`](../../RELEASI
 
 ## 0.1.0 (unreleased)
 
-First release. Extracted from the AI Recruiter, whose requisition, job,
-application, interview and offer modules each carried a hand-rolled
+First release. Extracted from a production system whose status-bearing
+records each carried a hand-rolled
 `_TRANSITIONS` dict with its own `can_transition`, `guard_transition` and
 `is_terminal`, raising an error whose only structure was an English sentence.
 

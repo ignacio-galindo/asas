@@ -181,7 +181,6 @@ does those), no per-state permissions (`asas-access`), no runtime
 configuration of the graph: transitions are code, reviewed and tested
 (principle 9).
 
-Extracted from the AI Recruiter, which carried five near-identical copies of
-this (requisition, job, application, interview and offer).
-`tests/test_ad_recruiter_parity.py` rebuilds all five and checks every pair of
-states against the originals.
+Extracted from a production system that carried five near-identical copies of
+this. `tests/test_parity.py` rebuilds five such machines (renamed into neutral
+domains) and checks every pair of states against the hand-rolled tables.

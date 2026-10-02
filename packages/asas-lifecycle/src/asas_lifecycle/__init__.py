@@ -9,8 +9,8 @@ out fails at import, not in production. At runtime the service asks
 error carrying the from/to/action and the states that *would* have been
 allowed.
 
-Extracted from the AI Recruiter, which carried five near-identical copies
-(requisition, job, application, interview, offer). This is the thing *below*
+Extracted from a production system that carried five near-identical copies
+of a hand-rolled status table. This is the thing *below*
 ``asas-workflow``: one record's status and its legal moves, with no approvals,
 quorums, instances or tables.
 
