@@ -135,7 +135,7 @@ def test_without_force_does_not_swallow_the_bodys_error(engine):
 
 
 def test_add_tenant_scoped_column_backfills_under_force(engine, requires_enforcement):
-    """The D216 lesson, as a test.
+    """The FORCE-RLS backfill lesson, as a test.
 
     The obvious spelling (add nullable, UPDATE, SET NOT NULL) is asserted right
     below this to fail, because a migration binds no tenant and FORCE filters the

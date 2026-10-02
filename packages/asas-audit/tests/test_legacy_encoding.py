@@ -118,12 +118,12 @@ def host_rows(n: int, *, start: Optional[datetime] = None) -> list[Row]:
         payload = _PAYLOADS[i % len(_PAYLOADS)]
         digest = host_compute_hash(prev, host_chain_payload(
             event_id=event_id, tenant_id=TENANT, actor="entra|alice",
-            action=f"requisition.step{i}", resource_type="requisition",
+            action=f"document.step{i}", resource_type="document",
             resource_id=resource_id, payload=payload, occurred_at=occurred_at,
         ))
         rows.append(Row(
-            id=event_id, seq=i + 1, actor="entra|alice", action=f"requisition.step{i}",
-            resource_type="requisition", resource_id=resource_id, payload=payload,
+            id=event_id, seq=i + 1, actor="entra|alice", action=f"document.step{i}",
+            resource_type="document", resource_id=resource_id, payload=payload,
             occurred_at=occurred_at, hash_prev=prev, hash_current=digest,
             encoding=LEGACY.name,
         ))
@@ -139,7 +139,7 @@ def package_rows(after: list[Row], n: int) -> list[Row]:
     for i in range(n):
         row = Row(
             id=str(uuid.uuid4()), seq=base_seq + i + 1, actor="svc:asas",
-            action=f"requisition.after{i}", resource_type="requisition",
+            action=f"document.after{i}", resource_type="document",
             resource_id=str(uuid.uuid4()), payload={"i": i},
             occurred_at=datetime(2026, 9, 28, 10, i, tzinfo=timezone.utc),
             hash_prev=prev, hash_current=b"",
@@ -407,7 +407,7 @@ def _append_and_verify(engine, n: int):
         appended = [
             asas_audit.append(
                 s, org_id=str(TENANT), actor="svc:asas", action=f"after.{i}",
-                resource_type="requisition", resource_id=str(i),
+                resource_type="document", resource_id=str(i),
             )
             for i in range(n)
         ]

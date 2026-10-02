@@ -65,7 +65,7 @@ def test_updating_across_tenants_matches_nothing(seeded, requires_enforcement):
 
 def test_a_vacuous_isolation_check_is_an_error(widgets, requires_enforcement):
     """No rows means the assertion cannot fail, so it must not be allowed to
-    pass. An empty database is where the D216-class migration bug hides."""
+    pass. An empty database is where a migration that RLS silently filtered hides."""
     with pytest.raises(AssertionError, match="Vacuous"):
         asas_tenancy.assert_isolated(widgets, "widget", TENANT_A, TENANT_B)
 
