@@ -13,7 +13,7 @@ class Skill(BaseModel):
 
 
 class Profile(BaseModel):
-    """Candidate profile."""
+    """Contact profile."""
 
     full_name: str
     years: int | None = None

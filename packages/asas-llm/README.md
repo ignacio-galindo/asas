@@ -181,37 +181,6 @@ walker the OpenAI SDK ships privately, so the package does not import `openai`
 for a schema transform. Providers that reject `response_format` run with
 `strict=False` and rely on repair plus validation.
 
-## Adopting in the AI engine this was extracted from
-
-What exists there today (`base/llm/`, `base/utils/pydantic.py`,
-`base/definitions/enum/prompts.py`, `base/definitions/schema/llm/__init__.py`)
-and where it goes:
-
-| Engine today | Becomes | Note |
-| --- | --- | --- |
-| `LLMRunner.ainvoke` (`base/llm/runner.py`) | `asas_llm.runners.LLMRunner.ainvoke` | Same call shape; returns `LLMResult`, raises instead of `None`. The `LANGCHAIN` parser branch was `NotImplementedError` and is gone. |
-| `LLMRunner.agent_ainvoke`, `graph_ainvoke` | host code + `runner.trace(name)` | `create_agent` and the LangGraph graph stay in the engine (they are product flow); the traced config and the nesting come from the package. |
-| `LangfuseClient` singleton (`base/llm/store/langfuse.py`) | `LayeredPromptStore(LangfusePromptStore(client), LocalPromptStore(...))` | The hard dependency the roadmap names. `fetch_timeout_seconds` bounds what was an unbounded `to_thread` call. |
-| `get_prompt` / `build_messages` (`base/llm/prompts/__init__.py`) | `to_chat_prompt_template(prompt, history_variable=, input_variable=)` | The engine's "Current user input: {input}" wording and `chat_history` placeholder are the `input_variable` / `history` arguments. |
-| `to_strict_json_schema` (`base/utils/pydantic.py`) | `asas_llm.strict_json_schema` | Verbatim port minus the `openai` import. |
-| `langfuse_compat.py` | `asas_llm.langfuse.install_langchain_compat()` | Applied lazily, only if the old paths fail to import. |
-| `LangFuseCallbackHandler` (`base/llm/callbacks/`) | nothing | Unused in the engine; the trace handler comes from the trace. |
-| `Prompts` enum, `LLMModel` enum (130 model names) | stay in the engine | Product vocabulary. The package takes prompt names and model names as strings; the enum's `create_openai_model` becomes one `openai_compatible(...)` / `azure_openai(...)` factory chosen from `LLM_PROVIDER`. |
-| `EngineContextVariables.CORRELATION_ID` | `asas_llm.bind_request(request.correlation_id)` | Bound in `execute_executor`; `ExecuteExecutorResponse` gains a `trace_ids` field from `asas_llm.trace_ids()`. |
-| `EngineContextVariables.LANGFUSE_TRACE_ID` | `asas_llm.last_trace_id()` | Was written on every call and never read. |
-| `SuperAgent` and the tool collectors | stay in the engine | A product orchestration pattern over `agent_ainvoke`; it takes its traced config from `runner.trace`. |
-| `EmbeddingClient` | stays, candidate for `asas_llm.embeddings` later | Different call shape; not needed by any current consumer of the runner. |
-| `LLMRunner` as `SingletonMeta` | `asas_llm.configure` + `runner()` | Same process-wide access, but `set_runner()` lets tests inject a fake model. |
-
-Order of adoption that keeps every step shippable: (1) snapshot the Langfuse
-prompts into `base/data/prompts/` and configure the layered store, which
-removes the outage failure mode before anything else changes; (2) switch
-`ainvoke` callers to the package runner, replacing `if result is None` with
-`except LLMError` where a skip is intended; (3) bind the request in the
-executor route and add `trace_ids` to the response; (4) move `SuperAgent` to
-`runner.trace`; (5) delete `base/llm/runner.py`, `store/`, `prompts/__init__.py`,
-`callbacks/`, `langfuse_compat.py` and `utils/pydantic.py`.
-
 ## Developing
 
 ```bash
