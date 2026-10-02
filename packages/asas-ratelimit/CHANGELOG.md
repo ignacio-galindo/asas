@@ -19,8 +19,8 @@ Release procedure and the historical tag mapping: [`RELEASING.md`](../../RELEASI
   clock with a TTL on every key. Duck-typed on `eval`; no Redis import.
 - **`client_address(request, proxy_hops)`**: the proxy-safe key, reading
   `X-Forwarded-For` from the end and never the first entry.
-- The sync `allow` / `check` are unchanged. Upstreamed from the ad-recruiter
-  platform (its D321), where the shared bucket runs in production.
+- The sync `allow` / `check` are unchanged. Upstreamed from a
+  production platform, where the shared bucket runs across replicas.
 
 ## 0.11.0 — 2026-08-25
 
