@@ -88,3 +88,36 @@ def test_raise_if_invalid_is_fastapi_422():
     assert e.value.detail == [
         {"loc": ["body", "dob"], "msg": "No future dates.", "type": "value_error.m.dob_future"}
     ]
+
+
+def test_422_detail_carries_params_as_ctx_only_when_present():
+    """Pydantic v2 puts a constrained type's parameters in ``ctx``; ours land in the
+    same place so one client renderer serves both. No params → no ``ctx`` key, so
+    the pre-0.12 envelope is byte-identical for existing rules."""
+    from fastapi import HTTPException
+
+    from asas_validation import to_detail
+
+    _declare(
+        Rule("m", "not_future", ("dob",), "No future dates.", "m.dob_future"),
+        Rule("m", "min_age", ("dob",), "At least {years}.", "m.too_young", params={"years": 18}),
+    )
+    with pytest.raises(HTTPException) as e:
+        raise_if_invalid("m", None, {"dob": TOMORROW})
+    assert e.value.detail == [
+        {"loc": ["body", "dob"], "msg": "No future dates.", "type": "value_error.m.dob_future"},
+        {"loc": ["body", "dob"], "msg": "At least 18.", "type": "value_error.m.too_young", "ctx": {"years": 18}},
+    ]
+    assert to_detail([]) == []
+
+
+def test_render_message_matches_the_client_exactly():
+    """Bare ``{name}`` only: format specs, positional and empty braces stay as
+    written, because the browser client renders with the same regex and a
+    message that renders on one side only is a drift."""
+    from asas_validation import render_message
+
+    assert render_message("{years} and {nope}", {"years": 3}) == "3 and {nope}"
+    assert render_message("{years:02d} {0} {} {{x}}", {"years": 3}) == "{years:02d} {0} {} {{x}}"
+    assert render_message("plain", {}) == "plain"
+    assert render_message("{strict}", {"strict": True}) == "True"

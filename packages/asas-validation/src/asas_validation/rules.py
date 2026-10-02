@@ -5,17 +5,29 @@ message. The host declares its whole catalog once at boot via :func:`declare_rul
 (rules are developer invariants, not admin-tunable data — they live in the host's
 code, not in this package and not in a DB).
 
-Kinds (implemented in ``engine._KINDS``):
-  * ``not_future(field)``      — field <= today
-  * ``not_past(field)``        — field >= today
-  * ``order(earlier, later)``  — earlier <= later                (cross-field)
-  * ``max_age(field)``         — field >= today - ``params["years"]`` years
+Built-in kinds (implemented in ``engine``; the browser client mirrors every one):
 
-Extra parameters (e.g. ``years`` for ``max_age``) go in ``params``. The violation
-attaches to the rule's **last** own field (``Rule.target``) — the one usually being
-edited to an invalid value — so the UI can flag the right input. A field spelled
-``parent.field`` is **namespaced**: it reads a related record's value from the
-``context`` mapping the caller passes to ``evaluate``.
+  single field
+  * ``not_future(f)``               — f <= today
+  * ``not_past(f)``                 — f >= today
+  * ``max_age(f)``                  — f >= today - ``years``            (not older than)
+  * ``min_age(f)``                  — f <= today - ``years``            (at least N years old)
+  * ``max_future(f)``               — f <= today + ``years`` / ``days`` (not further ahead than)
+  * ``not_before(f)``               — f >= ``date``   (fixed ISO bound, e.g. "1900-01-01")
+  * ``not_after(f)``                — f <= ``date``
+
+  cross-field
+  * ``order(earlier, later)``       — earlier <= later; ``strict: true`` → earlier < later
+  * ``max_span(earlier, later)``    — later - earlier <= ``days`` / ``years``
+  * ``min_span(earlier, later)``    — later - earlier >= ``days`` / ``years``
+
+Extra parameters go in ``params``. A message may reference them as ``{years}``,
+``{days}``, ``{date}``, ``{strict}`` — simple ``{name}`` placeholders only, so the
+browser client can render the same text. The violation attaches to the rule's
+**last** own field (``Rule.target``) — the one usually being edited to an invalid
+value — so the UI can flag the right input. A field spelled ``parent.field`` is
+**namespaced**: it reads a related record's value from the ``context`` mapping the
+caller passes to ``evaluate``.
 """
 
 from dataclasses import dataclass, field
