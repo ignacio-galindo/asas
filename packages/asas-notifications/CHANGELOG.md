@@ -7,6 +7,11 @@ Release procedure and the historical tag mapping: [`RELEASING.md`](../../RELEASI
 
 ## 0.19.0 — 2026-09-04
 
+- **Requires `sqlmodel<0.0.45`.** From 0.0.45, SQLModel's `DateTime` refuses a
+  datetime without a timezone, and this package stores naive UTC, so every
+  write of a timestamp failed on a fresh install. Moving the columns to
+  timezone-aware values, which lifts the cap, is a separate change.
+
 ### Joined onto 0.16.1: one migration chain for both lines
 
 This line numbered its migrations ``0005`` to ``0010`` while upstream shipped its
