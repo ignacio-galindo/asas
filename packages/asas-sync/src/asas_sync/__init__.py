@@ -9,7 +9,7 @@ the offset ceiling, a watermark that never passes the walk's start, deletion
 only after two misses (verified by key where the walk is not exact), resumable
 capped passes, and one pass per collection at a time.
 
-Extracted from the ad-recruiter platform's Oracle Fusion thin index (D303/D309).
+Extracted from a production mirror of an HR system's collections.
 
 Host contract (table-owning variant, router-less, no seed):
 

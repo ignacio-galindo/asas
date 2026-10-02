@@ -1,8 +1,7 @@
 """Mirror a remote paginated collection into the host's tables, incrementally.
 
-Extracted from the ad-recruiter platform's Oracle Fusion "thin index" (its
-D303/D309), where every rule below was learned from a measured incident on a
-live HR system. The remote is behind :class:`RemoteCollection`; the rows are
+Extracted from a production mirror of an HR system's collections, where every
+rule below was learned from a measured incident on a live system. The remote is behind :class:`RemoteCollection`; the rows are
 the host's (``upsert`` and ``on_deleted``); this package owns only the cursor
 and the seen-marks.
 

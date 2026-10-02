@@ -1,6 +1,6 @@
 # asas-sync
 
-Keep a local copy of a remote paginated collection (an ERP's requisitions, an
+Keep a local copy of a remote paginated collection (an ERP's purchase orders, an
 HRIS's workers, a CRM's accounts) up to date incrementally, so you can list,
 search and join it without calling the remote every time, and trust that the
 copy is complete.
@@ -97,5 +97,5 @@ Your `upsert` must be idempotent: rows at a re-anchor are read twice, and a
 pass that failed after a commit repeats a page. If you use `refresh_keys`, it
 must also never replace a newer row with an older one (`upsert_newer`).
 
-Extracted from the ad-recruiter platform's Oracle Fusion thin index (D303,
-D309, D330, D331, D332).
+Extracted from a production mirror of an HR system's collections, where each
+rule above was learned from a measured incident.

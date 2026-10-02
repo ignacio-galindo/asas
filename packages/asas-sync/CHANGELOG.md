@@ -7,8 +7,8 @@ Release procedure: [`RELEASING.md`](../../RELEASING.md).
 
 ## 0.1.0 — 2026-09-30
 
-- First release, extracted from the ad-recruiter platform's Oracle Fusion thin
-  index and made independent of Oracle: a `RemoteCollection` protocol, a
+- First release, extracted from a production mirror of an HR system's
+  collections and made independent of that system: a `RemoteCollection` protocol, a
   `SyncSpec`, and two package tables (`asas_sync_cursor`, `asas_sync_seen`).
 - `run_pass`: key-ordered and stamp-ordered walks, the offset-ceiling
   re-anchor, stuck detection, a watermark capped by the walk's start and the
