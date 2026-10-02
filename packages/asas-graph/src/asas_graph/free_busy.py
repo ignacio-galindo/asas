@@ -6,7 +6,7 @@ and the mailbox's own ``workingHours``, all under the ``Calendars.ReadWrite``
 (or ``Calendars.Read``) application permission. ``findMeetingTimes`` is not
 used: it has no application-permission form, so it is unusable app-only.
 
-What the AI Recruiter engine learned on the wire, kept here:
+What a production scheduling service learned on the wire, kept here:
 
 - **The cap is 100 addresses per request.** Graph answers
   ``ErrorMailboxDataArrayTooBig`` at 101 (proven against a live tenant). The

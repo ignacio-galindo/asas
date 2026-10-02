@@ -7,9 +7,8 @@ Release procedure and the historical tag mapping: [`RELEASING.md`](../../RELEASI
 
 ## 0.1.1 (unreleased)
 
-Free/busy, ported from the AI Recruiter engine's `base/services/graph/free_busy.py`
-(XD-348) and the product-free core of `base/services/interview/slot_finder.py`
-(XD-349). Additive: nothing in 0.1.0 changes.
+Free/busy and the domain-free core of a slot finder, ported from a production
+scheduling service. Additive: nothing in 0.1.0 changes.
 
 - **`FreeBusyReader(client, mailbox).get_schedule(mailboxes, start, end,
   interval_minutes=60)`** over Graph `getSchedule`, returning one
@@ -32,14 +31,15 @@ Free/busy, ported from the AI Recruiter engine's `base/services/graph/free_busy.
   own hours in its own zone and a default for the rest. The engine's
   ranking (reviewed-window tiers, fragmentation score, optional-attendee
   conflicts, rationale text, near-miss explanation, notice period, holiday
-  and business-day counting) is recruiting policy and stayed in the engine.
+  and business-day counting) is the product's scheduling policy and stayed
+  with the product.
 - **`FreeBusyError`** (with `is_transient`) and
   **`UnmappedFreeBusyStatusError`** join the `GraphError` hierarchy.
 
 ## 0.1.0 — unreleased
 
-First release. Extracted from the AI Recruiter engine's `base/services/graph`
-(`GraphClient`, `TeamsMeetingService`) and generalised — the shapes below are
+First release. Extracted from a Microsoft 365 host's Graph client and Teams
+meeting service and generalised — the shapes below are
 the ones that survived production, with the product-specific parts removed.
 
 - **`GraphSettings`** replaces the engine's `config.GRAPH_*` import: an explicit

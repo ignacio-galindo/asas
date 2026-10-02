@@ -13,7 +13,7 @@ for two reasons that matter to a host:
 Datetimes must be timezone-aware. They are converted to UTC and sent with
 ``timeZone: "UTC"`` — Graph then renders each attendee's copy in *their*
 calendar's zone. A naive datetime is refused rather than guessed at, because
-"the server's local time" has booked a lot of interviews an hour off.
+"the server's local time" has booked a lot of meetings an hour off.
 """
 
 from __future__ import annotations
@@ -71,7 +71,7 @@ class TeamsMeetings:
     """Book, move and cancel Teams meetings in one organiser's calendar.
 
     ``organizer`` is the user id or UPN whose calendar owns the events —
-    typically a shared mailbox such as ``interviews@example.gov``. It must be a
+    typically a shared mailbox such as ``meetings@example.gov``. It must be a
     real mailbox the application permission covers.
     """
 

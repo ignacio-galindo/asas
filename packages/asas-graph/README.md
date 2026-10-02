@@ -22,11 +22,11 @@ graph = asas_graph.GraphClient(asas_graph.GraphSettings(
     client_id=settings.graph_client_id,
     client_secret=settings.graph_client_secret,
 ))
-teams = asas_graph.TeamsMeetings(graph, organizer="interviews@example.gov")
+teams = asas_graph.TeamsMeetings(graph, organizer="meetings@example.gov")
 
 # use
 meeting = await teams.create(
-    "Cloud Architect interview",
+    "Quarterly planning review",
     start, end,                                   # timezone-aware datetimes
     attendees=[asas_graph.Attendee("chen.wei@example.com", "Chen Wei")],
     body_html="<p>Agenda…</p>",
@@ -51,7 +51,7 @@ mail and needs no `Mail.Send` (that is `asas-mail`'s job, and it will sit on
 this client). `OnlineMeetings.ReadWrite.All` is **not** needed.
 
 `organizer` is the mailbox the events live in — a shared mailbox such as
-`interviews@example.gov` works well. It must be a real, licensed mailbox.
+`meetings@example.gov` works well. It must be a real, licensed mailbox.
 
 ## Settings
 
@@ -124,7 +124,7 @@ calendar permissions for `getSchedule` too; they are untested here. `findMeeting
 because it has no application-permission form.
 
 ```python
-reader = asas_graph.FreeBusyReader(graph, mailbox="interviews@example.gov")
+reader = asas_graph.FreeBusyReader(graph, mailbox="meetings@example.gov")
 schedules = await reader.get_schedule(
     ["chen.wei@example.com", "sara@example.com"],
     start, end,                     # timezone-aware; sent to Graph in UTC
@@ -222,5 +222,5 @@ Pass `http=httpx.AsyncClient(transport=httpx.MockTransport(handler))` and
 `token_provider=StaticTokenProvider("x")`; nothing leaves the process. The
 package's own `tests/conftest.py` has a recording fake worth copying.
 
-See the repo README for the family contract. Extracted from the AI Recruiter
-engine's `base/services/graph` (roadmap row 7).
+See the repo README for the family contract. Extracted from a Microsoft 365
+host's working Graph integration and generalised.

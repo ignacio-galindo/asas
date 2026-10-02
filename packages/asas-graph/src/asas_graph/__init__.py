@@ -1,8 +1,7 @@
 """Asas Microsoft Graph: sign in as the application, talk to Graph, book Teams
 meetings, read free/busy.
 
-Extracted from a Microsoft 365 host's working implementation (the AI Recruiter
-engine), generalised: settings are an explicit object rather than a settings
+Extracted from a Microsoft 365 host's working implementation and generalised: settings are an explicit object rather than a settings
 import, errors are a typed hierarchy with no HTTP-status baggage, and the
 client is a plain object the host owns rather than a process singleton.
 
