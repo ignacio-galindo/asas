@@ -7,8 +7,8 @@ Release procedure: [`RELEASING.md`](../../RELEASING.md).
 
 ## 0.1.0 — 2026-09-29
 
-- First release, extracted from the ad-recruiter platform's audit module
-  (`modules/platform/audit`, its D36 contract) and generalised:
+- First release, extracted from a production platform's audit module (its
+  audit-row-commits-with-the-change contract) and generalised:
   - organisation and resource identifiers are strings, so UUID and int hosts
     use the same version;
   - SQLite as well as Postgres, with append-only triggers on both;

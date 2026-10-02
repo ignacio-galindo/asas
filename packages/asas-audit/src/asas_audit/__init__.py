@@ -3,8 +3,8 @@
 Every event is hash-chained to the one before it within its organisation, so
 editing, deleting or inserting a row out of band shows up on verify at exactly
 that row. Events are appended inside the caller's transaction, so the audit
-row commits or rolls back with the change it describes. Extracted from the
-ad-recruiter platform's audit module (its D36 contract), generalised to plain
+row commits or rolls back with the change it describes. Extracted from a
+production platform's audit module, generalised to plain
 string identifiers and to SQLite as well as Postgres.
 
 Host contract (table-owning variant, no seed):

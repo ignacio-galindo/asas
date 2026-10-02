@@ -68,4 +68,4 @@ strings. An async host calls through its session's sync bridge:
 await async_session.run_sync(lambda s: asas_audit.append(s, ...))
 ```
 
-Extracted from the ad-recruiter platform (its audit module and decision D36).
+Extracted from a production platform's audit module and generalised.
