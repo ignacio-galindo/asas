@@ -55,18 +55,47 @@ await asas_sync.reconcile(session_factory, spec, org_id=org) # weekly
   to SQLite and Postgres; no advisory lock.
 - **Each page commits on its own,** so a failure stops the walk with the cursor
   at the last committed page, and the error is recorded on the cursor.
+- **Followers refresh what changed.** `PassResult.changed_keys` names the keys
+  met with a stamp after the pass's starting watermark, so the work that
+  follows a pass (re-reading the records the mirror feeds) touches only those.
+  `None` means "everything": a walk from nothing, a full walk, more than
+  `changed_keys_cap` (2,000), or a pass that RESUMED a stopped walk, whose
+  earlier pages were never reported. The row at the watermark is re-read on
+  every pass and is not a change.
+- **A record a notification names is read by key.** `refresh_keys(...)` asks
+  the collection's optional `fetch_keys(keys)` and upserts what comes back: no
+  walk, no lease, the watermark untouched. It may race a pass, which is safe
+  only because the upsert never goes backwards.
+- **The upsert never goes backwards.** `upsert_newer(session, table, rows,
+  key_columns=..., stamp_column=...)` is `INSERT ... ON CONFLICT DO UPDATE ...
+  WHERE stamp <= new stamp`, so a page read a moment ago cannot overwrite the
+  version a notification just read. Equal stamps still rewrite, so a full walk
+  refills every column.
+- **A waiting pass holds no connection.** `wait_s=` retries the lease between
+  short transactions, for a pass that must not be dropped (one a notification
+  triggered); without it a held lease is `SyncBusyError` at once.
+- **A copy saved beside the mirror is served only while the mirror vouches for
+  it.** `saved_copy_is_current(cursor, saved_stamp=..., mirrored_stamp=...)` is
+  True only when the collection was walked to the end, its last pass completed
+  without an error, and the copy's stamp is at least the mirror's.
 
 ## Host contract
 
 Table-owning, router-less, no seed.
 
 - `migrate(engine)`: package Alembic chain (`alembic_version_asas_sync`).
-- `run_pass(session_factory, spec, org_id=..., full=False)` and
-  `reconcile(session_factory, spec, org_id=...)`: async. The remote call is
-  async; the database work runs in short sync transactions off the event loop.
+- `run_pass(session_factory, spec, org_id=..., full=False, wait_s=0,
+  retry_s=15)` and `reconcile(session_factory, spec, org_id=..., wait_s=0)`:
+  async. The remote call is async; the database work runs in short sync
+  transactions off the event loop.
+- `refresh_keys(session_factory, spec, keys, org_id=...)`: records by key
+  (needs the collection's `fetch_keys`).
+- `upsert_newer(...)` and `saved_copy_is_current(...)`: see above.
 - `cursor_status(session, spec, org_id=...)`: the cursor, for an admin card.
 
 Your `upsert` must be idempotent: rows at a re-anchor are read twice, and a
-pass that failed after a commit repeats a page.
+pass that failed after a commit repeats a page. If you use `refresh_keys`, it
+must also never replace a newer row with an older one (`upsert_newer`).
 
-Extracted from the ad-recruiter platform's Oracle Fusion thin index (D303, D309).
+Extracted from the ad-recruiter platform's Oracle Fusion thin index (D303,
+D309, D330, D331, D332).

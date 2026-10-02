@@ -40,7 +40,21 @@ walk is not exact (see above), so there a twice-missed key is read by key with
 
 **One pass per collection at a time,** by a lease on the cursor row taken with
 compare-and-set (portable; no advisory lock), renewed per page and expiring on
-its own if the holder dies.
+its own if the holder dies. A pass that must not be dropped (one triggered by a
+change notification) passes ``wait_s`` and retries the claim between short
+transactions, so it holds no database connection while it waits.
+
+**Follow-ups refresh what changed.** A pass reports the keys it met with a
+stamp AFTER its starting watermark (``PassResult.changed_keys``), so work that
+follows a pass (re-reading the records the mirror feeds) can touch only those.
+``None`` means "treat everything as changed": a walk from nothing, a full walk,
+a walk that RESUMED a stopped pass (its earlier pages were never reported), or
+more changes than ``SyncSpec.changed_keys_cap``.
+
+**A record named by a notification is read by key** (:func:`refresh_keys`):
+no walk and no lease, so it is safe to race a walk ONLY because the host's
+upsert never goes backwards (an older version never replaces a newer row).
+:func:`upsert_newer` is that upsert for a plain table.
 """
 
 from __future__ import annotations
@@ -89,6 +103,13 @@ class RemoteCollection(Protocol):
 
     async def exists(self, key: str) -> Optional[bool]: ...
 
+    # OPTIONAL, needed only by :func:`refresh_keys`:
+    #
+    #   async def fetch_keys(self, keys: Sequence[str]) -> Sequence[Any]
+    #
+    # the rows for these keys (a missing key is simply absent: deletion is the
+    # reconcile's to decide).
+
 
 @dataclass(frozen=True)
 class SyncSpec:
@@ -104,6 +125,8 @@ class SyncSpec:
     max_pages: int = 10_000
     clock_skew_s: float = 60.0
     lease_s: float = 1800.0
+    #: Past this many changed keys a pass reports ``changed_keys=None``.
+    changed_keys_cap: int = 2000
     #: How keys compare, for the key-ordered walk's progress check. The default
     #: compares numerically when both keys are digits, as text otherwise.
     key_sort: Callable[[str], Any] = field(default=lambda k: (0, int(k), "") if k.isdigit() else (1, 0, k))
@@ -125,6 +148,19 @@ class PassResult:
     complete: bool = False
     watermark: Optional[datetime] = None
     duration_ms: int = 0
+    #: Rows met with a stamp after the pass's starting watermark.
+    changed: int = 0
+    #: Those rows' keys, or ``None`` for "treat everything as changed" (see
+    #: the module doc). An empty list means nothing changed.
+    changed_keys: Optional[list[str]] = None
+
+
+@dataclass
+class RefreshResult:
+    resource: str
+    asked: int = 0
+    #: The keys the remote returned, and therefore upserted.
+    found: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -199,6 +235,29 @@ def _claim(session: Session, org: str, spec: SyncSpec, owner: str) -> bool:
         .values(lease_owner=owner, lease_until=now + timedelta(seconds=spec.lease_s))
     )
     return moved.rowcount == 1
+
+
+async def _claim_or_wait(
+    session_factory: Callable[[], Session],
+    org: str,
+    spec: SyncSpec,
+    owner: str,
+    *,
+    wait_s: float,
+    retry_s: float,
+) -> None:
+    """Take the lease, retrying for up to ``wait_s``. Each attempt is its own
+    short transaction and the wait sleeps outside any, so a waiting pass holds
+    no database connection (a pool of a few would otherwise be drained by
+    passes waiting on one another)."""
+    deadline = time.monotonic() + max(0.0, wait_s)
+    while True:
+        if await _db(session_factory, lambda s: _claim(s, org, spec, owner)):
+            return
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise SyncBusyError(f"{spec.resource} is already being walked for {org or 'the platform'!r}")
+        await asyncio.sleep(min(max(retry_s, 0.01), remaining))
 
 
 def _release(session: Session, org: str, resource: str, owner: str) -> None:
@@ -300,14 +359,16 @@ async def run_pass(
     org_id: Any = "",
     full: bool = False,
     now: Optional[datetime] = None,
+    wait_s: float = 0.0,
+    retry_s: float = 15.0,
 ) -> PassResult:
     """One incremental pass (``full=True`` walks everything). Raises
-    :class:`SyncBusyError` when another pass holds the lease; any other
-    failure is recorded on the cursor and re-raised."""
+    :class:`SyncBusyError` when another pass holds the lease (after waiting up
+    to ``wait_s`` for it, retrying every ``retry_s``); any other failure is
+    recorded on the cursor and re-raised."""
     org = "" if org_id is None else str(org_id)
     owner = uuid.uuid4().hex
-    if not await _db(session_factory, lambda s: _claim(s, org, spec, owner)):
-        raise SyncBusyError(f"{spec.resource} is already being walked for {org or 'the platform'!r}")
+    await _claim_or_wait(session_factory, org, spec, owner, wait_s=wait_s, retry_s=retry_s)
     started_clock = time.monotonic()
     started = _utc(now) or _now()
     ceiling = started - timedelta(seconds=spec.clock_skew_s)
@@ -321,9 +382,21 @@ async def run_pass(
         since = None if full else watermark
         resume = last_key if (spec.key_ordered and not full and not last_complete) else None
         highest: list[Optional[datetime]] = [watermark if not full else None]
+        # Changes are reported against the starting watermark, strictly after
+        # it: the row AT the watermark is re-read every pass and is no change.
+        changed: list[str] = []
+        overflow = [since is None or resume is not None]
 
         async def on_page(rows: list[Any], page_max: Optional[datetime], last_key: Optional[str]) -> None:
             keys = [_key_text(spec, r) for r in rows]
+            for r, k in zip(rows, keys):
+                stamp = _utc(spec.stamp(r))
+                if k is not None and (since is None or (stamp is not None and stamp > since)):
+                    result.changed += 1
+                    if not overflow[0]:
+                        changed.append(k)
+                        if len(changed) > spec.changed_keys_cap:
+                            overflow[0] = True
 
             def commit(session: Session) -> None:
                 if rows:
@@ -348,6 +421,7 @@ async def run_pass(
             spec, since=since, after_key=resume, purpose="sync", on_page=on_page
         )
         result.complete = complete
+        result.changed_keys = None if overflow[0] else list(dict.fromkeys(changed))
         final: dict[str, Any] = {
             "last_complete": complete,
             "last_run_at": started,
@@ -393,13 +467,14 @@ async def reconcile(
     *,
     org_id: Any = "",
     now: Optional[datetime] = None,
+    wait_s: float = 0.0,
+    retry_s: float = 15.0,
 ) -> ReconcileResult:
     """Walk the whole collection marking every key met, then delete what two
     consecutive complete walks both missed (see the module doc)."""
     org = "" if org_id is None else str(org_id)
     owner = uuid.uuid4().hex
-    if not await _db(session_factory, lambda s: _claim(s, org, spec, owner)):
-        raise SyncBusyError(f"{spec.resource} is already being walked for {org or 'the platform'!r}")
+    await _claim_or_wait(session_factory, org, spec, owner, wait_s=wait_s, retry_s=retry_s)
     started = _utc(now) or _now()
     result = ReconcileResult(resource=spec.resource)
     try:
@@ -478,3 +553,104 @@ def cursor_status(session: Session, spec_or_resource: Any, *, org_id: Any = "") 
     return session.execute(
         select(SyncCursor).where(SyncCursor.org_id == org, SyncCursor.resource == resource)
     ).scalar_one_or_none()
+
+
+async def refresh_keys(
+    session_factory: Callable[[], Session],
+    spec: SyncSpec,
+    keys: Sequence[str],
+    *,
+    org_id: Any = "",
+    now: Optional[datetime] = None,
+) -> RefreshResult:
+    """Read these records BY KEY and upsert them: no walk, no lease, the
+    watermark untouched (the next pass still walks from it).
+
+    For a change notification that names its record, where walking the
+    collection to find one row would cost a walk. It can race a pass, which is
+    safe ONLY when ``spec.upsert`` never replaces a newer row with an older one
+    (see :func:`upsert_newer`); the keys found are marked seen, so a reconcile
+    counts them as present. Needs the collection's optional ``fetch_keys``."""
+    fetch_keys = getattr(spec.collection, "fetch_keys", None)
+    if fetch_keys is None:
+        raise TypeError(f"{spec.resource}: the collection has no fetch_keys(keys)")
+    org = "" if org_id is None else str(org_id)
+    wanted = list(dict.fromkeys(str(k) for k in keys if k not in (None, "")))
+    result = RefreshResult(resource=spec.resource, asked=len(wanted))
+    if not wanted:
+        return result
+    at = _utc(now) or _now()
+    rows = [r for r in await fetch_keys(wanted) if _key_text(spec, r) is not None]
+    found = [k for k in (_key_text(spec, r) for r in rows) if k is not None]
+
+    def commit(session: Session) -> None:
+        if rows:
+            spec.upsert(session, rows)
+            _mark_seen(session, org, spec.resource, found, at)
+
+    await _db(session_factory, commit)
+    result.found = list(dict.fromkeys(found))
+    return result
+
+
+def upsert_newer(
+    session: Session,
+    table: Any,
+    rows: Sequence[dict[str, Any]],
+    *,
+    key_columns: Sequence[str],
+    stamp_column: str,
+) -> None:
+    """``INSERT ... ON CONFLICT (key) DO UPDATE ... WHERE stamp <= new stamp``:
+    an upsert that never replaces a newer row with an older version of itself.
+
+    What makes :func:`refresh_keys` safe to race a walk: a page the walk read a
+    moment ago must not overwrite the version a notification just read. EQUAL
+    stamps still rewrite, so a full walk refills every column. ``table`` is a
+    SQLAlchemy ``Table`` or a mapped model; Postgres and SQLite."""
+    if not rows:
+        return
+    target = getattr(table, "__table__", table)
+    dialect = session.get_bind().dialect.name
+    if dialect == "postgresql":
+        from sqlalchemy.dialects.postgresql import insert as dialect_insert
+    else:
+        from sqlalchemy.dialects.sqlite import insert as dialect_insert
+    stmt = dialect_insert(target).values(list(rows))
+    supplied = set().union(*(r.keys() for r in rows))
+    updates = {
+        c.name: stmt.excluded[c.name]
+        for c in target.columns
+        if c.name in supplied and c.name not in key_columns
+    }
+    session.execute(
+        stmt.on_conflict_do_update(
+            index_elements=list(key_columns),
+            set_=updates,
+            where=target.c[stamp_column] <= stmt.excluded[stamp_column],
+        )
+    )
+
+
+def saved_copy_is_current(
+    cursor: Optional[SyncCursor],
+    *,
+    saved_stamp: Optional[datetime],
+    mirrored_stamp: Optional[datetime],
+) -> bool:
+    """Whether a copy of a record saved elsewhere (its full body, say, kept
+    beside the thin mirror) may be served instead of asking the remote.
+
+    Only when the mirror can vouch for the record: the collection has been
+    walked to the end at least once, its last pass completed without an error,
+    and the copy was saved at a stamp at least the mirror's. A mirror that is
+    behind (a failed or capped pass) vouches for nothing, and the caller asks
+    the remote, as it would have without the copy."""
+    if cursor is None or cursor.backfilled_at is None:
+        return False
+    if cursor.last_error is not None or not cursor.last_complete:
+        return False
+    saved, mirrored = _utc(saved_stamp), _utc(mirrored_stamp)
+    if saved is None or mirrored is None:
+        return False
+    return saved >= mirrored

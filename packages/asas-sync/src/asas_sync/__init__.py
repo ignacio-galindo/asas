@@ -17,11 +17,17 @@ Host contract (table-owning variant, router-less, no seed):
 - :func:`run_pass` / :func:`reconcile` - async; take the host's session
   factory, so each page commits in its own short transaction.
 - :func:`cursor_status` - the cursor row, for an admin card.
+- :func:`refresh_keys` - read records named by a change notification by key.
+- :func:`upsert_newer` - an upsert that never goes backwards, which is what
+  makes :func:`refresh_keys` safe to race a pass.
+- :func:`saved_copy_is_current` - whether the mirror vouches for a copy of a
+  record saved beside it.
 """
 
 from .engine import (
     PassResult,
     ReconcileResult,
+    RefreshResult,
     RemoteCollection,
     RemotePage,
     SyncBusyError,
@@ -29,7 +35,10 @@ from .engine import (
     SyncStuckError,
     cursor_status,
     reconcile,
+    refresh_keys,
     run_pass,
+    saved_copy_is_current,
+    upsert_newer,
 )
 from .migrate import migrate
 from .models import SyncCursor, SyncSeen
@@ -39,6 +48,7 @@ __version__ = "0.1.0"
 __all__ = [
     "PassResult",
     "ReconcileResult",
+    "RefreshResult",
     "RemoteCollection",
     "RemotePage",
     "SyncBusyError",
@@ -49,6 +59,9 @@ __all__ = [
     "cursor_status",
     "migrate",
     "reconcile",
+    "refresh_keys",
     "run_pass",
+    "saved_copy_is_current",
+    "upsert_newer",
     "__version__",
 ]
