@@ -11,7 +11,7 @@ unchanged by this revision.
 
 **The argument that did not.** That was read as "two rungs is the whole of what
 the routing can express", which is about the MATRIX, and the matrix is a table
-an administrator writes cells into. ``(interviews, critical) -> email`` was
+an administrator writes cells into. ``(orders, critical) -> email`` was
 always expressible; the only thing stopping it was that ``critical`` could not
 be spelled. Meanwhile ``topic``, the other coordinate of the same matrix, was a
 seeded table an org extends. The asymmetry had no reason behind it.

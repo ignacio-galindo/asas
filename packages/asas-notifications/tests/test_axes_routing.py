@@ -179,20 +179,20 @@ def test_a_topic_and_importance_cell_beats_either_coordinate_alone(session):
     """The cell 0.16.0 could not store, and the precedence it introduces.
 
     Under the old CHECK a row stated a topic or an axis value, never both, so
-    "interviews, but only the ones that matter" was unwritable and the nearest
-    rule applied to every interview notification. Here the broad topic rule
+    "orders, but only the ones that matter" was unwritable and the nearest
+    rule applied to every order notification. Here the broad topic rule
     turns email OFF for the topic, and the narrower cell turns it back ON for
     the high ones only.
     """
-    add_topic(session, "interviews")
-    add_policy(session, "email", topic="interviews", enabled=False)
-    add_policy(session, "email", topic="interviews", importance="high", enabled=True)
+    add_topic(session, "orders")
+    add_policy(session, "email", topic="orders", enabled=False)
+    add_policy(session, "email", topic="orders", importance="high", enabled=True)
 
     urgent = emit_axes(
-        session, [1], "interview.cancelled", topic="interviews", importance="high", title="u",
+        session, [1], "order.cancelled", topic="orders", importance="high", title="u",
     )[0]
     ordinary = emit_axes(
-        session, [1], "interview.noted", topic="interviews", importance="low", title="o",
+        session, [1], "order.noted", topic="orders", importance="low", title="o",
     )[0]
     assert deliveries(session, urgent.id) == ["email"], "the two-coordinate cell should win"
     assert deliveries(session, ordinary.id) == [], "the topic rule should still apply here"
@@ -200,20 +200,20 @@ def test_a_topic_and_importance_cell_beats_either_coordinate_alone(session):
 
 def test_an_importance_row_applies_across_every_topic(session):
     """The other single coordinate: a column of the matrix rather than a row."""
-    add_topic(session, "interviews")
-    add_topic(session, "candidates")
+    add_topic(session, "orders")
+    add_topic(session, "invoices")
     add_policy(session, "email", importance="low", enabled=True)  # even the quiet rung
-    a = emit_axes(session, [1], "interview.noted", topic="interviews", importance="low", title="a")[0]
-    b = emit_axes(session, [1], "candidate.viewed", topic="candidates", importance="low", title="b")[0]
+    a = emit_axes(session, [1], "order.noted", topic="orders", importance="low", title="a")[0]
+    b = emit_axes(session, [1], "invoice.viewed", topic="invoices", importance="low", title="b")[0]
     assert deliveries(session, a.id) == ["email"]
     assert deliveries(session, b.id) == ["email"]
 
 
 def test_the_all_null_row_is_the_org_wide_default(session):
     """Both coordinates NULL was forbidden before; it is the default row now."""
-    add_topic(session, "interviews")
+    add_topic(session, "orders")
     add_policy(session, "email", enabled=False)  # no topic, no importance
-    n = emit_axes(session, [1], "interview.cancelled", topic="interviews", importance="high")[0]
+    n = emit_axes(session, [1], "order.cancelled", topic="orders", importance="high")[0]
     assert deliveries(session, n.id) == [], "the default row should suppress email everywhere"
 
 

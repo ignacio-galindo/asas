@@ -43,7 +43,7 @@ package.
 rungs was right *about the built-in fallback*, which can only say "in-app" or
 "in-app and email" and therefore cannot tell a third rung from a second one.
 That argument was then applied to the MATRIX, which is a table an administrator
-writes cells into: `(interviews, critical) -> email` was always expressible, and
+writes cells into: `(orders, critical) -> email` was always expressible, and
 the only thing stopping it was that `critical` could not be spelled. Meanwhile
 `topic`, the other coordinate of the same matrix, had been a seeded table all
 along. The asymmetry had no reason behind it.
@@ -153,9 +153,9 @@ keeps it on a sidecar row of its own.
 ### Routing is a (topic × urgency) matrix, and `nature` is not a condition
 
 **The cell that could not be written.** A CHECK let a policy row state a topic
-OR an axis condition, never both, so "interview notifications, but only the
+OR an axis condition, never both, so "order notifications, but only the
 urgent ones, go to email" had nowhere to live — the nearest storable rules were
-"all interview notifications" or "all urgent notifications", and neither is what
+"all order notifications" or "all urgent notifications", and neither is what
 an administrator means. A topic row was also never compared against urgency at
 all, so the closest available rule applied more widely than intended.
 
@@ -163,8 +163,8 @@ The coordinates are independent now, and NULL is a wildcard:
 
 | `(topic, urgency)` | the rule |
 | --- | --- |
-| `("interviews", "high")` | this topic at this urgency — **new** |
-| `("interviews", None)` | this topic, every urgency |
+| `("orders", "high")` | this topic at this urgency — **new** |
+| `("orders", None)` | this topic, every urgency |
 | `(None, "high")` | every topic at this urgency |
 | `(None, None)` | every notification — the org-wide default, also new |
 

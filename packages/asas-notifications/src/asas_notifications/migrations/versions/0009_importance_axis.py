@@ -175,8 +175,8 @@ def _warn_if_the_fold_was_invisible(conn) -> None:
 
     The only way this happens is a host policy filtering the UPDATE (see the
     module docstring), and the host is the only side that can act on it: it must
-    re-run the fold with its own policy lifted, as ``ad-recruiter``'s own
-    migration does. A warning rather than a raise, because failing the boot of a
+    re-run the fold with its own policy lifted, as a host with a filtering
+    policy does in its own migration. A warning rather than a raise, because failing the boot of a
     host that cannot fix it mid-migration trades one broken state for another,
     and the rows are readable either way.
     """

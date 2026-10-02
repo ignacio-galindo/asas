@@ -340,9 +340,9 @@ class NotificationChannelPolicy(SQLModel, table=True):
 
     **A row may carry BOTH coordinates**, which was the change in 0.17.0. Before
     that a CHECK forbade the combination: a row was a topic rule or an axis rule,
-    never both, so "interview notifications, but only the important ones, go to
+    never both, so "order notifications, but only the important ones, go to
     email" could not be stored at all — the nearest expressible rules were "all
-    interview notifications" or "all important notifications", and neither is the
+    order notifications" or "all important notifications", and neither is the
     rule an administrator meant. Nothing warned about the gap because the
     constraint rejected the write.
 
@@ -352,8 +352,8 @@ class NotificationChannelPolicy(SQLModel, table=True):
     =========================  ========================================
     ``(topic, importance)``    the rule
     =========================  ========================================
-    ``("interviews", "high")`` this topic, at this importance
-    ``("interviews", None)``   this topic, every importance
+    ``("orders", "high")`` this topic, at this importance
+    ``("orders", None)``   this topic, every importance
     ``(None, "high")``         every topic, at this importance
     ``(None, None)``           every notification (the org-wide default)
     =========================  ========================================
