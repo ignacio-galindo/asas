@@ -23,55 +23,55 @@ each form.
 import asas_validation as validation
 from asas_validation import Rule
 
-ENTITY = "candidate"
+ENTITY = "member"
 
 RULES = (
     Rule(ENTITY, "not_future", ("date_of_birth",),
-         "Date of birth cannot be in the future.", "candidate.dob_future"),
+         "Date of birth cannot be in the future.", "member.dob_future"),
     Rule(ENTITY, "min_age", ("date_of_birth",),
-         "Candidates must be at least {years} years old.", "candidate.too_young",
+         "Members must be at least {years} years old.", "member.too_young",
          params={"years": 18}),
     Rule(ENTITY, "max_age", ("date_of_birth",),
-         "Check the date of birth.", "candidate.too_old", params={"years": 100}),
+         "Check the date of birth.", "member.too_old", params={"years": 100}),
     Rule(ENTITY, "order", ("available_from", "available_until"),
-         "Availability must end after it starts.", "candidate.availability_order",
+         "Availability must end after it starts.", "member.availability_order",
          params={"strict": True}),
     Rule(ENTITY, "max_span", ("available_from", "available_until"),
-         "An availability window is at most {days} days.", "candidate.availability_span",
+         "An availability window is at most {days} days.", "member.availability_span",
          params={"days": 90}),
     # cross-entity: the parent's value arrives in `context`
-    Rule("interview", "order", ("requisition.opened_on", "scheduled_on"),
-         "An interview cannot precede the requisition.", "interview.before_requisition"),
+    Rule("appointment", "order", ("case.opened_on", "scheduled_on"),
+         "An appointment cannot precede its case.", "appointment.before_case"),
 )
 
 # boot
 validation.configure(timezone="Asia/Dubai")      # the calendar your users see
-validation.register_fields(ENTITY, Candidate.model_fields)
-validation.register_fields("interview", Interview.model_fields)
-validation.register_fields("requisition", Requisition.model_fields)
+validation.register_fields(ENTITY, Member.model_fields)
+validation.register_fields("appointment", Appointment.model_fields)
+validation.register_fields("case", Case.model_fields)
 validation.declare_rules(RULES)
 validation.assert_rules_known()                  # malformed catalog → boot fails here
 app.include_router(validation.build_router(), dependencies=[Depends(require_user)])
 
 # routers
 @router.post("")
-def create(payload: CandidateCreate, session=Depends(get_session)):
-    row = Candidate(**payload.model_dump(exclude_none=True))
+def create(payload: MemberCreate, session=Depends(get_session)):
+    row = Member(**payload.model_dump(exclude_none=True))
     validation.raise_if_invalid(ENTITY, None, row.model_dump())   # effective record, not payload
     ...
 
 @router.patch("/{id}")
-def update(id: int, payload: CandidateUpdate, session=Depends(get_session)):
+def update(id: int, payload: MemberUpdate, session=Depends(get_session)):
     row = _get_or_404(session, id)
     changes = payload.model_dump(exclude_unset=True)
     validation.raise_if_invalid(ENTITY, row, changes)
     ...
 
-@router.post("/{id}/interviews")
-def schedule(id: int, payload: InterviewCreate, session=Depends(get_session)):
-    req = _get_or_404(session, id)
-    validation.raise_if_invalid("interview", None, payload.model_dump(),
-                                context={"requisition.opened_on": req.opened_on})
+@router.post("/{id}/appointments")
+def schedule(id: int, payload: AppointmentCreate, session=Depends(get_session)):
+    parent = _get_or_404(session, id)
+    validation.raise_if_invalid("appointment", None, payload.model_dump(),
+                                context={"case.opened_on": parent.opened_on})
 ```
 
 Two behaviours to know before writing a rule:
@@ -149,8 +149,8 @@ when there are any, so rules without params produce the pre-0.12 envelope exactl
 
 ```json
 {"detail": [
-  {"loc": ["body", "date_of_birth"], "msg": "Candidates must be at least 18 years old.",
-   "type": "value_error.candidate.too_young", "ctx": {"years": 18}}
+  {"loc": ["body", "date_of_birth"], "msg": "Members must be at least 18 years old.",
+   "type": "value_error.member.too_young", "ctx": {"years": 18}}
 ]}
 ```
 
@@ -170,11 +170,11 @@ const { rules, etag } = await fetchRules(`${API}/validation/rules`, { headers: a
 const validator = createValidator(rules);
 
 // before submit — same answers the server would give
-const local = validator.validate("candidate", form.values, { record: current });
+const local = validator.validate("member", form.values, { record: current });
 if (local.length) return setErrors(fieldErrors(local));
 
 // after submit — the server's 422 (ours or Pydantic's) into the same shape
-const res = await post(`${API}/candidates`, form.values);
+const res = await post(`${API}/members`, form.values);
 if (res.status === 422) setErrors(fieldErrors(fromServer422(await res.json())));
 ```
 
@@ -194,9 +194,9 @@ side only.
 A list, filterable by `?entity=`, ETag-cached (weak tag, per representation):
 
 ```json
-[{"entity": "candidate", "kind": "min_age", "fields": ["date_of_birth"],
-  "field": "date_of_birth", "code": "candidate.too_young",
-  "message": "Candidates must be at least {years} years old.", "params": {"years": 18}}]
+[{"entity": "member", "kind": "min_age", "fields": ["date_of_birth"],
+  "field": "date_of_birth", "code": "member.too_young",
+  "message": "Members must be at least {years} years old.", "params": {"years": 18}}]
 ```
 
 `message` is the raw template; the client renders it. `field` is the input a
@@ -207,7 +207,7 @@ schedule.
 ## Design notes
 
 - Rules are **developer invariants, not admin data**: they live in host code, so a
-  deployment cannot switch off "an interview cannot precede its requisition".
+  deployment cannot switch off "an appointment cannot precede its case".
 - The engine is **model-free**: it reads a record by attribute (or by key for a
   mapping) and overlays the changes; it never imports host models.
 - The four registries (rules, fields, kinds, clock) are module-level, like every
