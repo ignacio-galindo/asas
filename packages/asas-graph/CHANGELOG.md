@@ -7,8 +7,8 @@ Release procedure and the historical tag mapping: [`RELEASING.md`](../../RELEASI
 
 ## 0.1.0 — unreleased
 
-First release. Extracted from the AI Recruiter engine's `base/services/graph`
-(`GraphClient`, `TeamsMeetingService`) and generalised — the shapes below are
+First release. Extracted from a Microsoft 365 host's Graph client and Teams
+meeting service and generalised — the shapes below are
 the ones that survived production, with the product-specific parts removed.
 
 - **`GraphSettings`** replaces the engine's `config.GRAPH_*` import: an explicit

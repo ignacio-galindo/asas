@@ -22,7 +22,7 @@ END = START + timedelta(hours=1)
 
 CREATED = {
     "id": "AAMkAD-evt-1",
-    "subject": "Cloud Architect interview",
+    "subject": "Quarterly planning review",
     "webLink": "https://outlook.office365.com/owa/?itemid=AAMkAD-evt-1",
     "onlineMeeting": {"joinUrl": "https://teams.microsoft.com/l/meetup-join/abc"},
 }
@@ -30,7 +30,7 @@ CREATED = {
 
 @pytest.fixture
 def meetings(client):
-    return TeamsMeetings(client, organizer="interviews@example.gov")
+    return TeamsMeetings(client, organizer="meetings@example.gov")
 
 
 def test_organizer_is_required():
@@ -42,7 +42,7 @@ def test_create_books_an_online_event_in_utc_with_attendees(meetings, graph):
     graph.status, graph.body = 201, CREATED
     meeting = asyncio.run(
         meetings.create(
-            "Cloud Architect interview", START, END,
+            "Quarterly planning review", START, END,
             attendees=[Attendee("chen.wei@example.com", "Chen Wei"),
                        Attendee("panel@example.gov", required=False)],
             body_html="<p>Agenda</p>",
@@ -51,9 +51,9 @@ def test_create_books_an_online_event_in_utc_with_attendees(meetings, graph):
 
     call = graph.only
     assert call.method == "POST"
-    assert call.url.endswith("/users/interviews@example.gov/events")
+    assert call.url.endswith("/users/meetings@example.gov/events")
     assert call.json == {
-        "subject": "Cloud Architect interview",
+        "subject": "Quarterly planning review",
         "start": {"dateTime": "2026-09-14T06:00:00", "timeZone": "UTC"},
         "end": {"dateTime": "2026-09-14T07:00:00", "timeZone": "UTC"},
         "isOnlineMeeting": True,
@@ -67,7 +67,7 @@ def test_create_books_an_online_event_in_utc_with_attendees(meetings, graph):
     assert meeting == Meeting(
         id="AAMkAD-evt-1",
         join_url="https://teams.microsoft.com/l/meetup-join/abc",
-        subject="Cloud Architect interview",
+        subject="Quarterly planning review",
         start=datetime(2026, 9, 14, 6, 0, tzinfo=timezone.utc),
         end=datetime(2026, 9, 14, 7, 0, tzinfo=timezone.utc),
         attendees=(Attendee("chen.wei@example.com", "Chen Wei"), Attendee("panel@example.gov", required=False)),
@@ -126,7 +126,7 @@ def test_reschedule_patches_only_the_window_by_default(meetings, graph):
     asyncio.run(meetings.reschedule("evt-1", START + timedelta(days=1), END + timedelta(days=1)))
     call = graph.only
     assert call.method == "PATCH"
-    assert call.url.endswith("/users/interviews@example.gov/events/evt-1")
+    assert call.url.endswith("/users/meetings@example.gov/events/evt-1")
     assert call.json == {
         "start": {"dateTime": "2026-09-15T06:00:00", "timeZone": "UTC"},
         "end": {"dateTime": "2026-09-15T07:00:00", "timeZone": "UTC"},
@@ -153,7 +153,7 @@ def test_cancel_deletes_the_organizers_event(meetings, graph):
     asyncio.run(meetings.cancel("evt-1"))
     call = graph.only
     assert call.method == "DELETE"
-    assert call.url.endswith("/users/interviews@example.gov/events/evt-1")
+    assert call.url.endswith("/users/meetings@example.gov/events/evt-1")
 
 
 def test_cancel_maps_a_graph_failure(meetings, graph):
