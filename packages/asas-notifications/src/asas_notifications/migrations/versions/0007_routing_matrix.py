@@ -1,9 +1,9 @@
 """Routing becomes a real (topic × urgency) matrix, and ``nature`` leaves it.
 
 **The cell that could not be written.** 0.16.0 carried a CHECK that allowed a
-policy row to state a topic OR an axis condition, never both. So "interview
+policy row to state a topic OR an axis condition, never both. So "order
 notifications, but only the urgent ones, go to email" had nowhere to live: the
-nearest storable rules were "all interview notifications" or "all urgent
+nearest storable rules were "all order notifications" or "all urgent
 notifications", and neither is what an administrator meant. Worse, a topic row
 was never compared against urgency at all, so the closest available rule applied
 far more widely than intended, and nothing warned — the write was simply

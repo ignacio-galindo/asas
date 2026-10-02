@@ -72,7 +72,7 @@ def test_rejects_a_foreign_table_of_the_same_name(engine):
         conn.execute(
             sa.text(
                 "CREATE TABLE notification ("
-                "  id INTEGER PRIMARY KEY, candidate_id INTEGER, headline VARCHAR"
+                "  id INTEGER PRIMARY KEY, record_id INTEGER, headline VARCHAR"
                 ")"
             )
         )

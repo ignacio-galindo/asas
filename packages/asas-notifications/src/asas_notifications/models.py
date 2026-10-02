@@ -244,9 +244,9 @@ class NotificationChannelPolicy(SQLModel, table=True):
 
     **A row may now carry BOTH a topic and an urgency**, which is the change from
     0.16.0's shape. Before, a CHECK forbade the combination: a row was a topic
-    rule or an axis rule, never both, so "interview notifications, but only the
+    rule or an axis rule, never both, so "order notifications, but only the
     urgent ones, go to email" could not be stored at all — the nearest
-    expressible rules were "all interview notifications" or "all urgent
+    expressible rules were "all order notifications" or "all urgent
     notifications", and neither is the rule an administrator meant. Nothing
     warned about the gap because the constraint rejected the write.
 
@@ -256,8 +256,8 @@ class NotificationChannelPolicy(SQLModel, table=True):
     ======================  ===========================================
     ``(topic, urgency)``    the rule
     ======================  ===========================================
-    ``("interviews", …)``   this topic, at this urgency  ← the new cell
-    ``("interviews", None)``this topic, every urgency
+    ``("orders", …)``   this topic, at this urgency  ← the new cell
+    ``("orders", None)``this topic, every urgency
     ``(None, "high")``      every topic, at this urgency
     ``(None, None)``        every notification (the org-wide default)
     ======================  ===========================================
