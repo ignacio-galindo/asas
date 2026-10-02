@@ -31,10 +31,10 @@ from ..models import DEFAULT_ORG_ID, Agent, Ticket
 # below, because routing policy and (later) preferences key on them — an emit
 # into an unseeded topic fails loud. Everything else travels on the emit
 # itself (DR 0003): the *action* is the app's own `entity.verb` reference,
-# declared nowhere, and the nature/urgency/reason axes are stated at the call
+# declared nowhere, and the second routing axis, `importance` (`low` stays in
+# the feed, `high` also emails, absent a policy row), is stated at the call
 # site — see the `notify()` calls in `jobs.py` and `workflow.py`.
 TOPIC_TICKETS = "tickets"
-
 
 def _context_resolver(session: Session) -> Optional[tuple[int, int]]:
     """``(user_id, org_id)`` — the package's order, and the order matters.
@@ -102,7 +102,15 @@ def configure() -> None:
     # Delivery channel. The logging adapter is the package's own, and is the
     # honest default for a reference host: a real one registers an email or chat
     # adapter here, and that is the only line that changes.
-    notifications.register_adapter("log", notifications.LoggingAdapter())
+    # **The NAME has to be the one routing resolves.** With no policy rows
+    # seeded, 0.16's fallback routes normal/high emits to the channel called
+    # "email"; an adapter registered under any other name is never found —
+    # dispatch_pending writes the outbox row, resolves no adapter, and marks
+    # it `skipped` ("no adapter registered for channel"), silently. The
+    # logging adapter therefore registers AS the email channel here; a real
+    # host swaps the adapter object and changes nothing else.
+    # (Re-creates PR #41 by @ignacio-galindo against the 0.16 wiring.)
+    notifications.register_adapter("email", notifications.LoggingAdapter())
 
 
 def seed(session: Session) -> None:
