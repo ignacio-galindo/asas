@@ -311,7 +311,9 @@ def test_sla_notification_rows_carry_the_hosts_org(app_module, agents):
             if "past its due date" in n.title
         ]
         assert breaches, "the sweep emitted nothing"
-        assert all(n.org_id == DEFAULT_ORG_ID for n in breaches), (
+        # Identity columns are opaque strings since 0.19 (the package stores
+        # what the host hands it as text), so the host's int org reads as "1".
+        assert all(n.org_id == str(DEFAULT_ORG_ID) for n in breaches), (
             f"resolver-stamped rows carry org {[n.org_id for n in breaches]}, "
             f"not the host's org {DEFAULT_ORG_ID} — the resolver tuple is "
             f"probably reversed"

@@ -36,46 +36,6 @@ from ..models import DEFAULT_ORG_ID, Agent, Ticket
 # site — see the `notify()` calls in `jobs.py` and `workflow.py`.
 TOPIC_TICKETS = "tickets"
 
-#: The axes each of those actions carries, which ride the ``notify`` call.
-#:
-#: Two axes, and both of them route: ``topic`` is the preference grouping and
-#: ``importance`` is how loudly it reaches somebody (``low`` stays in the feed,
-#: ``high`` also emails, absent a policy row saying otherwise). There is no
-#: third: ``nature``, which said what a notification asks of its recipient, was
-#: presentation and left the package in 0.18.0 — a host that wants it keeps it
-#: on a row of its own, because the host is the side that renders the feed.
-#:
-#: Kept in one table here rather than spelled at each emit, so one file still
-#: answers "what does this host notify about", which is the one thing the
-#: deleted kind catalogue was good for. The values travel on the call, which is
-#: where the package wants them.
-#:
-#: ``topic`` must EXIST in ``notification_topic`` or the emit fails loud, by
-#: design: policy and preferences key on it, so a typo is a catalogue mistake.
-#: This host uses the ``general`` platform row the package's own migration
-#: seeds; a host with real preference groupings seeds its own at boot.
-AXES: dict[str, dict[str, str]] = {
-    KIND_TICKET_ASSIGNED: {
-        "topic": notifications.DEFAULT_TOPIC,
-        "importance": "high",
-    },
-    KIND_ESCALATION_REQUESTED: {
-        "topic": notifications.DEFAULT_TOPIC,
-        "importance": "high",
-    },
-    KIND_ESCALATION_DECIDED: {
-        "topic": notifications.DEFAULT_TOPIC,
-        "importance": "high",
-    },
-    # The one quiet action: a breach notice is a standing fact the sweep
-    # re-announces, so it belongs in the feed and not in somebody's mail.
-    KIND_SLA_BREACHED: {
-        "topic": notifications.DEFAULT_TOPIC,
-        "importance": "low",
-    },
-}
-
-
 def _context_resolver(session: Session) -> Optional[tuple[int, int]]:
     """``(user_id, org_id)`` — the package's order, and the order matters.
 
