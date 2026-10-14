@@ -17,6 +17,7 @@ EXPECTED_KEYS = {
     "audit",
     "oracle",
     "graph",
+    "llm",
 }
 
 
