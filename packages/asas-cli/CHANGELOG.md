@@ -5,6 +5,12 @@ Pre-1.0, a breaking change bumps the **minor**.
 
 Release procedure and the historical tag mapping: [`RELEASING.md`](../../RELEASING.md).
 
+## 0.1.2 (unreleased)
+
+- `asas add agent` and `asas new --with agent` know `asas-agent` 0.2.0, the agent
+  framework: its registry entry, its offline fallback tag and a boot snippet
+  that imports it and shows where a release is loaded.
+
 ## 0.1.1 — 2026-09-13
 
 - New command `asas outdated`: reads a consumer project's `pyproject.toml`,

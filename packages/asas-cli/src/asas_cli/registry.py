@@ -106,6 +106,15 @@ _SPECS = [
         "table-less, router-less (AI tier)",
     ),
     PackageSpec(
+        "agent",
+        "asas-agent",
+        "asas_agent",
+        "packages/asas-agent",
+        "Agents on the OpenAI Agents SDK: content-addressed releases, skills, "
+        "replayable run contracts, procedure evals. No Temporal dependency.",
+        "table-less, router-less (AI tier)",
+    ),
+    PackageSpec(
         "mcp",
         "asas-mcp",
         "asas_mcp",
