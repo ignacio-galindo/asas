@@ -1,0 +1,41 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "asas-agent"
+version = "0.2.0"
+description = "Asas agent framework: agents on the OpenAI Agents SDK, released whole under the hash of their content, with skills as playbooks, run contracts a durable host can replay, and procedure evals run four times on a measured gateway. Independent of Temporal; a host hosts the runs."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+classifiers = [
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Intended Audience :: Developers",
+]
+dependencies = [
+    # One minor at a time: the SDK's private surface moves between minors, and a host
+    # upgrades the SDK and anything built on it (a Temporal integration) together.
+    "openai-agents>=0.22,<0.23",
+    # Imported directly by the eval models (the client, its throttle error); the
+    # version is the one openai-agents requires.
+    "openai",
+    "pydantic>=2.11,<3",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+]
+
+[project.scripts]
+asas-agent = "asas_agent.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/asas_agent"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

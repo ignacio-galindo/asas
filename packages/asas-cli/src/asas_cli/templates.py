@@ -261,6 +261,13 @@ SNIPPETS: dict[str, BootSnippet] = {
             "app.add_middleware(asas_llm.middleware.TraceIdMiddleware)  # X-Correlation-Id in, X-Trace-Id out",
         ),
     ),
+    "agent": BootSnippet(
+        imports=("import asas_agent", "from pathlib import Path"),
+        setup=(
+            '# release = asas_agent.load_release(settings.model, Path("agents"), agent="assistant")  '
+            "# TODO: your agent's folder; pin release[\"id\"] on every run",
+        ),
+    ),
     "mcp": BootSnippet(
         imports=("import asas_mcp", "from starlette.routing import Route"),
         setup=(

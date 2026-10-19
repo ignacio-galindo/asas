@@ -18,6 +18,7 @@ EXPECTED_KEYS = {
     "oracle",
     "graph",
     "llm",
+    "agent",
 }
 
 
