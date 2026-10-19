@@ -11,6 +11,10 @@ asas_agent/
   evaluation.py  scenario suites: parse_scenario, run_suite, summarize_repetitions,
                  assert_expected_record
   models.py      MeasuredModel, GatewayModels (imports the SDK; loaded on first use)
+  providers.py   gateway_provider, azure_provider: a product run's ModelProvider
+                 (imports the SDK and the OpenAI client; loaded on first use)
+  tracing.py     LangfuseTracingProcessor: the SDK's run traces in Langfuse 2.x
+                 (imports the SDK; loaded on first use)
   cli.py         asas-agent eval
 ```
 

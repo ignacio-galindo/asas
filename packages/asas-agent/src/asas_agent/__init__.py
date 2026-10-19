@@ -47,18 +47,30 @@ from .skills import load_skills, parse_skill
 
 if TYPE_CHECKING:  # pragma: no cover
     from .models import GATEWAY_KEYS, GatewayModels, MeasuredModel, usage_of
+    from .providers import azure_provider, gateway_provider
+    from .tracing import LangfuseTracingProcessor
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
-#: Names served by asas_agent.models, imported on first use.
-_MODELS = frozenset({"GATEWAY_KEYS", "GatewayModels", "MeasuredModel", "usage_of"})
+#: Names served by the modules that import the SDK, loaded on first use:
+#: the eval models, the production providers and the Langfuse tracing.
+_LAZY: dict[str, str] = {
+    "GATEWAY_KEYS": "models",
+    "GatewayModels": "models",
+    "MeasuredModel": "models",
+    "usage_of": "models",
+    "gateway_provider": "providers",
+    "azure_provider": "providers",
+    "LangfuseTracingProcessor": "tracing",
+}
 
 
 def __getattr__(name: str) -> Any:
-    if name in _MODELS:
-        from . import models
+    module_name = _LAZY.get(name)
+    if module_name is not None:
+        from importlib import import_module
 
-        return getattr(models, name)
+        return getattr(import_module(f".{module_name}", __name__), name)
     raise AttributeError(f"module 'asas_agent' has no attribute {name!r}")
 
 
@@ -68,6 +80,7 @@ __all__ = [
     "Delivery",
     "Failure",
     "GatewayModels",
+    "LangfuseTracingProcessor",
     "MeasuredModel",
     "ModelCall",
     "ProcedureFailure",
@@ -77,7 +90,9 @@ __all__ = [
     "TurnResult",
     "__version__",
     "assert_expected_record",
+    "azure_provider",
     "build_release",
+    "gateway_provider",
     "load_release",
     "load_skills",
     "parse_scenario",

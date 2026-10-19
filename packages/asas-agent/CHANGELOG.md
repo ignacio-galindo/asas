@@ -5,7 +5,31 @@ Pre-1.0, a breaking change bumps the **minor**.
 
 Release procedure and the historical tag mapping: [`RELEASING.md`](../../RELEASING.md).
 
-## 0.2.0 (unreleased)
+## 0.2.1 (unreleased)
+
+Additive: a host that is on 0.2.0 changes nothing.
+
+- **Production providers** (`asas_agent.providers`, loaded on first use):
+  `gateway_provider(api_key, base_url, timeout, max_retries, use_responses,
+  default_headers)` for OpenAI or any gateway that speaks its API, and
+  `azure_provider(api_key, endpoint, api_version, ...)` for Azure OpenAI.
+  The counterpart of the eval-only `GatewayModels`: an explicit timeout and
+  retry count on the client (the SDK's defaults are ten minutes and two
+  retries), and `use_responses=False` for a gateway that serves chat
+  completions only, where every run then uses `OpenAIChatCompletionsModel`.
+- **Langfuse tracing** (`asas_agent.tracing.LangfuseTracingProcessor`, loaded
+  on first use): the SDK's run traces written one to one to a Langfuse 2.x
+  client the host already has. The run is a trace with the same id (less the
+  `trace_` prefix) in the group id's session; a generation or response span
+  is a Langfuse generation with model, messages and usage; every other span
+  is a Langfuse span named by kind and name, a tool call keeping its
+  arguments and result; an error is the `ERROR` level. Spans are written when
+  they end, a `mask(data=...)` is applied to every payload, and a failing
+  backend never fails the run.
+- `gateway_provider`, `azure_provider` and `LangfuseTracingProcessor` are
+  exported from `asas_agent` lazily, like the eval models.
+
+## 0.2.0
 
 A new package with an old name. `asas-agent` 0.1.0 lived in its own repository
 (`ad-govtech/asas-agent`): a Postgres registry of agent definitions, Langfuse
