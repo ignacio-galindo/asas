@@ -136,6 +136,10 @@ async def never_asked(call_id, arguments):
     raise AssertionError("the ask tool was not expected")
 
 
+async def never_dispatched(*args):
+    raise AssertionError("no tool was expected")
+
+
 def test_the_renderer_satisfies_the_seam():
     renderer: ContextRenderer = RENDERER
     assert renderer.ask_tool in renderer.always
@@ -253,7 +257,7 @@ def test_a_run_nobody_waits_for_ends_at_the_question():
         raise AskPending()
 
     result = run(
-        run_agent(snapshot(), never_asked, ask, renderer=RENDERER, model=model)
+        run_agent(snapshot(), never_dispatched, ask, renderer=RENDERER, model=model)
     )
     assert result["ended"] == "asked"
     assert result["answer"] == "" and result["history"] == []

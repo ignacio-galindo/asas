@@ -19,7 +19,7 @@ class ToolDispatcher(Protocol):
     `AgentsException` ends the run."""
 
     def __call__(
-        self, call_id: str, name: str, arguments: dict, active_skill: str | None
+        self, call_id: str, name: str, arguments: dict, active_skill: str | None, /
     ) -> Awaitable[dict]: ...
 
 
@@ -28,7 +28,7 @@ class AskHandler(Protocol):
     the model reads when the answer comes. It may raise `AskPending` when nobody in
     this process waits, which ends the run at the question."""
 
-    def __call__(self, call_id: str, arguments: dict) -> Awaitable[dict]: ...
+    def __call__(self, call_id: str, arguments: dict, /) -> Awaitable[dict]: ...
 
 
 @runtime_checkable

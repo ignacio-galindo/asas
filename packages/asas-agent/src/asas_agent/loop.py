@@ -326,15 +326,14 @@ async def run_agent(
         model=model or release["model"],
         model_settings=model_settings(conversation_id),
     )
-    config = RunConfig(
-        tracing_disabled=True,
-        **({"model_provider": provider} if provider else {}),
-        **({"model": run_model} if run_model is not None else {}),
-    )
+    chosen: dict[str, Any] = {"model": run_model}
+    if provider:
+        chosen["model_provider"] = provider
+    config = RunConfig(tracing_disabled=True, **chosen)
     try:
         result = await Runner.run(
             agent,
-            input=[*renderer.opening(state.record), *snapshot["history"]],
+            input=list[Any]([*renderer.opening(state.record), *snapshot["history"]]),
             context=state,
             max_turns=release["max_turns"],
             run_config=config,
