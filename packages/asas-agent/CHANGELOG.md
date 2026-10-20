@@ -24,8 +24,11 @@ Additive: a host that is on 0.2.0 changes nothing.
   is a Langfuse generation with model, messages and usage; every other span
   is a Langfuse span named by kind and name, a tool call keeping its
   arguments and result; an error is the `ERROR` level. Spans are written when
-  they end, a `mask(data=...)` is applied to every payload, and a failing
-  backend never fails the run.
+  they end, a `mask(data=...)` is applied to every payload (a mask that
+  raises sends `"[mask failed]"` for that field, never the raw value), and a
+  failing backend never fails the run. Install it with
+  `set_trace_processors([...])`: `add_trace_processor` keeps the SDK's
+  default exporter, which sends traces to api.openai.com.
 - `gateway_provider`, `azure_provider` and `LangfuseTracingProcessor` are
   exported from `asas_agent` lazily, like the eval models.
 

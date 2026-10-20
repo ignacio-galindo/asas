@@ -20,11 +20,20 @@ finishes leaves nothing half-written. An error on a span is the observation's
 ``ERROR`` level and status message. A ``mask`` (the shape Langfuse's own
 ``MaskFunction`` has, ``mask(data=...)``) is applied to every input, output
 and data payload before it is sent, so a transcript a run carries can be
-recorded by reference rather than by value.
+recorded by reference rather than by value. If ``mask`` raises, that field
+is sent as ``"[mask failed]"``, never as the raw value, and the failure is
+logged without the content. With ``mask=None`` every payload is sent by value.
 
     from asas_agent.tracing import LangfuseTracingProcessor
-    from agents import add_trace_processor
-    add_trace_processor(LangfuseTracingProcessor(langfuse_client, mask=mask))
+    from agents import set_trace_processors
+    set_trace_processors([LangfuseTracingProcessor(langfuse_client, mask=mask)])
+
+``set_trace_processors`` REPLACES the SDK's processors, so the default OpenAI
+exporter is gone. ``add_trace_processor`` would keep it, and that exporter
+sends every trace to api.openai.com whenever an ``OPENAI_API_KEY`` is set: a
+host that must keep data in-country must not use it. Do not turn the SDK's
+exporter off with ``set_tracing_disabled(True)`` either, since that stops
+every processor, this one included.
 
 Imports the Agents SDK, so ``import asas_agent`` loads this module only when
 one of its names is first used.
@@ -42,6 +51,9 @@ from agents.tracing import Span, Trace, TracingProcessor
 log = logging.getLogger(__name__)
 
 Mask = Callable[..., Any]
+
+#: What a field is sent as when the mask raises on it: never the raw value.
+MASK_FAILED = "[mask failed]"
 
 #: Span kinds the SDK records a model call under.
 GENERATION_KINDS = frozenset({"generation", "response"})
@@ -78,9 +90,11 @@ class LangfuseTracingProcessor(TracingProcessor):
             return value
         try:
             return self.mask(data=value)
-        except Exception:  # noqa: BLE001 - a mask must never cost the trace
-            log.debug("asas_agent.tracing: mask failed", exc_info=True)
-            return value
+        except Exception as exc:  # noqa: BLE001 - a mask must never cost the trace
+            # The exception's message and traceback may quote the value, so
+            # only its type is logged.
+            log.warning("asas_agent.tracing: mask failed (%s); field sent as %s", type(exc).__name__, MASK_FAILED)
+            return MASK_FAILED
 
     # -- the SDK's hooks -----------------------------------------------------
 
@@ -164,4 +178,4 @@ class LangfuseTracingProcessor(TracingProcessor):
             log.debug("asas_agent.tracing: flush failed", exc_info=True)
 
 
-__all__ = ["GENERATION_KINDS", "LangfuseTracingProcessor", "langfuse_id"]
+__all__ = ["GENERATION_KINDS", "MASK_FAILED", "LangfuseTracingProcessor", "langfuse_id"]

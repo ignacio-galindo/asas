@@ -8,7 +8,7 @@ import pytest
 from agents import set_trace_processors
 from agents.tracing import agent_span, custom_span, function_span, generation_span, trace
 
-from asas_agent.tracing import GENERATION_KINDS, LangfuseTracingProcessor, langfuse_id
+from asas_agent.tracing import GENERATION_KINDS, MASK_FAILED, LangfuseTracingProcessor, langfuse_id
 
 
 class Client:
@@ -112,6 +112,30 @@ def test_the_mask_is_applied_to_inputs_outputs_and_data():
     generation = client.calls[1][1]
     assert generation["input"] == "[masked]" and generation["output"] == "[masked]"
     assert client.calls[2][1]["output"] == "ok"  # a string is not a list: untouched
+
+
+def test_a_mask_that_raises_sends_a_placeholder_never_the_raw_value(caplog):
+    # Residency: a broken mask must not leak the content it was meant to
+    # hide, neither to Langfuse nor into the log.
+    client = Client()
+
+    def mask(*, data):
+        raise ValueError(f"cannot mask {data!r}")
+
+    set_trace_processors([LangfuseTracingProcessor(client, mask=mask)])
+    try:
+        _run_flow()
+    finally:
+        set_trace_processors([])
+    generation = client.calls[1][1]
+    assert generation["input"] == MASK_FAILED and generation["output"] == MASK_FAILED
+    tool = client.calls[2][1]
+    assert tool["input"] == MASK_FAILED and tool["output"] == MASK_FAILED
+    assert "hello" not in repr(client.calls)
+    failures = [r for r in caplog.records if "mask failed" in r.getMessage()]
+    assert failures
+    for record in failures:
+        assert "hello" not in record.getMessage() and record.exc_info is None
 
 
 def test_a_failing_backend_never_fails_the_run(caplog):
