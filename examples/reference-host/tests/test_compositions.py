@@ -30,9 +30,12 @@ def _ticket(session, **kwargs) -> Ticket:
 
 
 def _notifications_for(session, user_id: int) -> list:
+    # Compared in the package's storage form: identity columns are opaque
+    # strings since asas-notifications 0.17.0, and Postgres refuses a VARCHAR
+    # compared with an integer where SQLite quietly coerced it.
     return session.exec(
         select(asas_notifications.Notification).where(
-            asas_notifications.Notification.user_id == user_id
+            asas_notifications.Notification.user_id == str(user_id)
         )
     ).all()
 
