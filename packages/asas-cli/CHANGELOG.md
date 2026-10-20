@@ -5,6 +5,11 @@ Pre-1.0, a breaking change bumps the **minor**.
 
 Release procedure and the historical tag mapping: [`RELEASING.md`](../../RELEASING.md).
 
+## 0.1.5 (unreleased)
+
+- The offline fallback pin for `asas-agent` moves to `v0.2.1`, the release
+  that adds the production providers and the Langfuse tracing processor.
+
 ## 0.1.4 (unreleased)
 
 - The offline fallback pin for `asas-oracle` moves to `v0.1.1`, the release
