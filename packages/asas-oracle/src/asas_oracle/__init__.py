@@ -81,6 +81,8 @@ from .errors import (
     OracleError,
     OracleGatewayError,
     OracleLockedError,
+    OraclePhaseEntryRequiredError,
+    OracleStateRefusedError,
     OracleNotConfiguredError,
     OracleNotFoundError,
     OracleQueryError,
@@ -148,7 +150,7 @@ from .upstream import (
 #: served to a v2 reader.
 REST_FRAMEWORK_V2: dict[str, str] = {"REST-Framework-Version": "2"}
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 __all__ = [
     "ApiKeyAuth",
@@ -186,6 +188,8 @@ __all__ = [
     "OracleNotConfiguredError",
     "OracleGatewayError",
     "OracleLockedError",
+    "OraclePhaseEntryRequiredError",
+    "OracleStateRefusedError",
     "OracleNotFoundError",
     "OracleQueryError",
     "OracleSettings",

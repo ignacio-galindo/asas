@@ -5,6 +5,11 @@ Pre-1.0, a breaking change bumps the **minor**.
 
 Release procedure and the historical tag mapping: [`RELEASING.md`](../../RELEASING.md).
 
+## 0.1.4 (unreleased)
+
+- The offline fallback pin for `asas-oracle` moves to `v0.1.1`, the release
+  that gives Fusion's lifecycle refusals their own error classes.
+
 ## 0.1.3 (unreleased)
 
 - The offline fallback pin for `asas-notifications` moves to `v0.20.0`, the
