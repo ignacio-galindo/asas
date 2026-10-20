@@ -5,6 +5,90 @@ Pre-1.0, a breaking change bumps the **minor**.
 
 Release procedure and the historical tag mapping: [`RELEASING.md`](../../RELEASING.md).
 
+## 0.20.0 (unreleased)
+
+### The opaque-identity line joins main
+
+**0.17.0, 0.18.0 and 0.19.0 were never tagged upstream.** They were built on
+Ignacio Galindo's `feat/opaque-identity` line (identity columns as opaque
+strings, routing as a topic by importance matrix, `importance` as a catalogue,
+the recipient's locale, and one migration chain joined onto 0.16.1) and pinned
+by branch, not by tag. This release carries that line onto `main` unchanged, so
+a host upgrading from the last tag, 0.16.x, takes every breaking change listed
+under 0.17.0 to 0.19.0 below as well as the ones here. Read them first.
+
+### Breaking
+
+- **A tenant-blind dispatch pass over a protected outbox raises.** A host that
+  dispatched through `asas_tenancy.tenant_engine` passes `tenant_pinned=True`.
+- **`NotificationDelivery.org_id` is NOT NULL.** A host that inserts outbox rows
+  itself sets it to the notification's `org_id`.
+- **Feed writes under a transaction-local tenant pin.** `mark_read`, `archive`
+  and `unarchive` commit and then refresh the row, so the refresh runs in a new
+  transaction. Unchanged behaviour, newly visible: under row level security a
+  host re-pins the tenant on `after_begin`, or the refresh finds nothing.
+
+### Async hosts (DR 0005)
+
+- **`asas_notifications.aio`**: an async twin of every public function that
+  takes a `Session` (`notify`, `resolve_channels`, the feed reads and writes,
+  `current_user_id`, `current_org_id`), plus `dispatch_pending` on an
+  `AsyncEngine`, `has_pending` on an `AsyncConnection`, and `migrate` on either.
+  Each runs the sync function itself on the caller's connection and inside the
+  caller's transaction (`AsyncSession.run_sync`), so the logic exists once, a
+  host rollback takes the package's writes with it, and there is no second
+  engine or driver. A test fails when a new public function has no twin.
+- **The bridge closes the two traps.** It flushes before returning (so the
+  outbox rows can no longer be lost when the caller never flushes the sync
+  face again) and returns frozen `aio.NotificationRecord`s built while the
+  session is live (so nothing lazy-loads off a detached row).
+- **The core runs on a plain SQLAlchemy `Session`**, not only SQLModel's: an
+  `AsyncSession`'s sync face is SQLAlchemy's unless the host chose otherwise.
+- **The async dispatcher runs sync adapters on a worker thread and awaits
+  async ones** (`send` may be a coroutine function). The sync dispatcher
+  refuses an async adapter as a failed attempt, never as a send: its coroutine
+  would never run.
+- **`migrate` also takes a `Connection`**, sync or the sync face of an async
+  one, but only OUTSIDE a transaction; one inside a transaction is refused
+  before anything is written. The chain commits as it goes, because `0003` and
+  `0004` build indexes CONCURRENTLY, which Postgres refuses in a transaction
+  block, so DR 0005 §5.4's `engine.begin()` example cannot work here: use
+  `engine.connect()`, or `aio.migrate(async_engine)`.
+- Install `asas-notifications[async]` (`sqlalchemy[asyncio]`). The sync package
+  does not import `aio`, so a sync host installs and changes nothing.
+
+### A schema of the host's choosing
+
+- **`configure_schema(name)`** qualifies the package's five tables, so every
+  statement names the schema on any connection. Call it at startup in every
+  process. **`migrate(engine, schema=...)`** (default: the configured schema)
+  creates the schema when missing and runs the chain inside it, version table
+  included; the adopt check looks there and only there. Postgres only. The
+  default, no schema, is exactly the previous behaviour.
+
+### Row level security on the tenant tables
+
+- **`migrate(engine, tenant_guc="procure.tenant_id")`** enables and FORCES row
+  level security on `notification` and `notification_delivery`, with
+  `asas_tenancy.enable_rls` keyed on `org_id` as text. Idempotent, and it takes
+  no table lock when the policies are already in place; a policy on another
+  variable is replaced. Needs `asas-tenancy` (`asas-notifications[tenancy]`);
+  a no-op off Postgres. The configuration tables are left readable to every
+  tenant (`TENANT_TABLES` explains why).
+- **`notification_delivery.org_id`** (migration `0012`), copied from the
+  notification at emit and backfilled from it for existing rows, so the outbox
+  can carry a policy on a column of its own. The backfill lifts FORCE for its
+  one statement on a host that had already forced its own policies, and fails
+  loud, with the count and the fix, on a delivery row with no notification.
+- **`dispatch_pending(engine, bind=..., tenant_pinned=...)`**, sync and async:
+  `bind(conn)` pins the tenant on every transaction a pass opens. With neither
+  argument, a pass over an outbox that row level security hides **raises**
+  instead of reading nothing and returning 0. A role that bypasses row level
+  security (a deliberate pass across tenants) is unaffected.
+- **Routing reads the importance catalogue per org.** It was cached whole, so
+  under a host's own policy on `notification_importance` whichever tenant
+  filled the cache decided, for a TTL, which overrides every other tenant had.
+
 ## 0.19.0 — 2026-09-04
 
 - **Requires `sqlmodel<0.0.45`.** From 0.0.45, SQLModel's `DateTime` refuses a

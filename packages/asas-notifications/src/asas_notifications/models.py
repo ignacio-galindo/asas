@@ -222,6 +222,11 @@ class NotificationDelivery(SQLModel, table=True):
 
     id: Optional[int] = Field(default=None, primary_key=True)
     notification_id: int = Field(foreign_key="notification.id", index=True)
+    #: The notification's own org, copied onto the outbox row (migration
+    #: ``0012``) so that row level security can key this table on a column of
+    #: its own, as it keys ``notification``. Without it the outbox is the one
+    #: table a tenant policy cannot name, and a dispatch pass reads it raw.
+    org_id: str = Field(index=True, max_length=255)
     channel: str = Field(index=True)  # "email" now; "slack"/"teams" later
     status: DeliveryStatus = Field(
         default=DeliveryStatus.pending,

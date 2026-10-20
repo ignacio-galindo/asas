@@ -20,6 +20,7 @@
   later with zero schema change.
 """
 
+import inspect
 import logging
 import warnings
 from contextlib import contextmanager
@@ -34,6 +35,7 @@ from sqlalchemy import or_ as sa_or
 from sqlalchemy import select as sa_select
 from sqlalchemy import update as sa_update
 from sqlmodel import Session, select
+from sqlmodel.sql.expression import SelectOfScalar
 
 from .channels import DeliveryPayload, SkipDelivery, adapter_for
 from .models import (
@@ -218,6 +220,20 @@ def current_org_id(session: Session) -> Optional[Any]:
     return ctx[1] if ctx else None
 
 
+def _exec(session: Session, statement):
+    """``sqlmodel.Session.exec`` on any SQLAlchemy ``Session``.
+
+    An async host's ``AsyncSession`` has a plain SQLAlchemy session as its sync
+    face unless the host chose SQLModel's subclass, and that face has no
+    ``exec``. Every query in this module goes through here, so the core runs on
+    either. Same result shape as SQLModel's: scalars for a single-entity
+    select, rows otherwise."""
+    if isinstance(session, Session):
+        return session.exec(statement)
+    result = session.execute(statement)
+    return result.scalars() if isinstance(statement, SelectOfScalar) else result
+
+
 def normalize_id(value: Any) -> Optional[str]:
     """A host identity value as the package stores it, or ``None``.
 
@@ -258,10 +274,10 @@ def _recipient_conditions(session: Session, user_id: Any) -> list:
 CONFIG_TTL_SECONDS = 60
 _topic_cache: dict[str, tuple[datetime, frozenset]] = {}
 _policy_cache: dict[Optional[int], tuple[datetime, tuple]] = {}
-#: The importance catalogue, cached whole and keyed by nothing: it is small
-#: (single digits of rows per org) and both readers want the same set, so one
-#: entry beats an org-keyed cache that would miss on the platform rows.
-_importance_cache: dict[str, tuple[datetime, tuple]] = {}
+#: The importance catalogue: ``"all"`` for the org-agnostic membership check,
+#: and ``("org", id)`` for routing, which reads the platform rows plus one org's
+#: (see :func:`_importance_rows` for why routing cannot share the whole set).
+_importance_cache: dict[Any, tuple[datetime, tuple]] = {}
 
 
 def config_cache_clear() -> None:
@@ -285,7 +301,7 @@ def _all_topic_keys(session: Session, *, refresh: bool = False) -> frozenset:
     falls back for a topic with no rows for this org."""
     entry = None if refresh else _topic_cache.get("all")
     if not _fresh(entry):
-        rows = session.exec(select(NotificationTopic.key)).all()
+        rows = _exec(session, select(NotificationTopic.key)).all()
         entry = (datetime.utcnow(), frozenset(rows))
         _topic_cache["all"] = entry
     return entry[1]
@@ -310,16 +326,33 @@ class _ImportanceRow:  # a detached, cache-safe copy of NotificationImportance
     emails_by_default: bool
 
 
-def _importance_rows(session: Session, *, refresh: bool = False) -> tuple:
-    entry = None if refresh else _importance_cache.get("all")
+def _importance_rows(
+    session: Session, *, refresh: bool = False, org: Optional[str] = None
+) -> tuple:
+    """The catalogue, whole (``org=None``), or the platform rows plus one org's.
+
+    The org-scoped form is what routing reads. Under a host's row level security
+    on this table the whole catalogue is not a fact about the table at all: it is
+    whatever the tenant bound when the cache filled could see, so a second org's
+    override would be missing from it for a TTL and that org would route on the
+    platform default. Platform plus this org is the same set with or without a
+    policy, so caching it per org is right either way."""
+    key = "all" if org is None else ("org", org)
+    entry = None if refresh else _importance_cache.get(key)
     if not _fresh(entry):
-        rows = session.exec(
-            select(
-                NotificationImportance.org_id,
-                NotificationImportance.key,
-                NotificationImportance.emails_by_default,
+        query = select(
+            NotificationImportance.org_id,
+            NotificationImportance.key,
+            NotificationImportance.emails_by_default,
+        )
+        if org is not None:
+            query = query.where(
+                sa_or(
+                    NotificationImportance.org_id.is_(None),
+                    NotificationImportance.org_id == org,
+                )
             )
-        ).all()
+        rows = _exec(session, query).all()
         entry = (
             datetime.utcnow(),
             tuple(
@@ -327,7 +360,7 @@ def _importance_rows(session: Session, *, refresh: bool = False) -> tuple:
                 for r in rows
             ),
         )
-        _importance_cache["all"] = entry
+        _importance_cache[key] = entry
     return entry[1]
 
 
@@ -356,21 +389,28 @@ def _emails_by_default(session: Session, org: Optional[Any], importance: str) ->
     rows) is treated as QUIET, because the direction that under-delivers is the
     one to fail in: a notification nobody emailed is still in the recipient's
     feed, and mail sent on a guess cannot be recalled."""
-    rows = [r for r in _importance_rows(session) if r.key == importance]
+    org_value = normalize_id(org) if org is not None else None
+    rows = [r for r in _importance_rows(session, org=org_value) if r.key == importance]
+    if not rows:
+        # A miss re-reads once, :func:`_importance_known`'s rule: a rung seeded
+        # inside the TTL window costs one SELECT, never a quiet route.
+        rows = [
+            r
+            for r in _importance_rows(session, refresh=True, org=org_value)
+            if r.key == importance
+        ]
     if not rows:
         return False
-    org_value = normalize_id(org) if org is not None else None
     override = next(
         (r for r in rows if r.org_id is not None and r.org_id == org_value), None
     )
     if override is not None:
         return override.emails_by_default
     # The PLATFORM row explicitly, never "the first row that came back". The
-    # catalogue is cached whole and unscoped (one small table, both readers want
-    # the same set), so another org's override for this key is sitting in that
-    # list too and row order is whatever the SELECT happened to return. Taking
-    # the first would let one org's routing default decide another's, which is
-    # the one class of bug this package cannot ship.
+    # rows are scoped to this org now, but taking the first would still let row
+    # order decide between the platform row and anything else the SELECT
+    # returned, and letting one org's routing default decide another's is the
+    # one class of bug this package cannot ship.
     platform = next((r for r in rows if r.org_id is None), None)
     return platform.emails_by_default if platform is not None else False
 
@@ -392,7 +432,8 @@ class _PolicyRow:  # a detached, cache-safe copy of NotificationChannelPolicy
 def _policy_rows(session: Session, org: Optional[Any]) -> tuple:
     entry = _policy_cache.get(org)
     if not _fresh(entry):
-        rows = session.exec(
+        rows = _exec(
+            session,
             select(NotificationChannelPolicy).where(
                 sa_or(
                     NotificationChannelPolicy.org_id.is_(None),
@@ -736,7 +777,8 @@ def notify(
     if coalesce:
         remaining: list[int] = []
         for user_id in ids:
-            existing = session.exec(
+            existing = _exec(
+                session,
                 select(Notification)
                 .where(
                     Notification.user_id == normalize_id(user_id),
@@ -810,7 +852,9 @@ def notify(
     session.flush()  # ids for the delivery rows
     for n in created:
         for channel in external:
-            session.add(NotificationDelivery(notification_id=n.id, channel=channel))
+            session.add(
+                NotificationDelivery(notification_id=n.id, org_id=n.org_id, channel=channel)
+            )
     return updated + created
 
 
@@ -823,7 +867,8 @@ def unread_count(session: Session, user_id: Any) -> int:
 
     Counted in SQL (it used to fetch every id and ``len()`` them) and org-scoped
     when a request context is available."""
-    return session.exec(
+    return _exec(
+        session,
         select(sa_func.count())
         .select_from(Notification)
         .where(
@@ -866,10 +911,12 @@ def list_feed(
         conditions.append(Notification.archived_at.is_not(None))
     if unread_only:
         conditions.append(Notification.read_at.is_(None))
-    total = session.exec(
+    total = _exec(
+        session,
         select(sa_func.count()).select_from(Notification).where(*conditions)
     ).one()
-    rows = session.exec(
+    rows = _exec(
+        session,
         select(Notification)
         .where(*conditions)
         .order_by(Notification.created_at.desc(), Notification.id.desc())
@@ -1013,15 +1060,186 @@ def has_pending(conn) -> bool:
     return row is not None
 
 
-def _finish(engine, delivery_id: int, **values) -> None:
-    values.setdefault("claimed_at", None)
+@contextmanager
+def _begin(engine, bind: Optional[Callable[[Any], Any]]):
+    """One short dispatcher transaction, with the host's tenant pin applied
+    first when it gave one. Every transaction a pass opens goes through here, so
+    a pin that is transaction-local (``SET LOCAL``, the safe default for pooled
+    connections) holds for each of them rather than only the first."""
     with engine.begin() as conn:
-        conn.execute(
-            sa_update(_delivery_t).where(_delivery_t.c.id == delivery_id).values(**values)
+        if bind is not None:
+            bind(conn)
+        yield conn
+
+
+def _refuse_tenant_blind(conn, bind, tenant_pinned: bool) -> None:
+    """The empty outbox that reports success, refused.
+
+    With row level security on the outbox and no tenant bound, every statement a
+    pass runs matches nothing: the pass sends nothing, returns 0, and looks
+    exactly like an outbox with nothing in it, while the queue silently never
+    drains. ``row_security_active`` asks Postgres whether the policies apply to
+    THIS role on THIS table, so a role that bypasses them (a deliberate pass
+    across every tenant) proceeds, and so does any database without row level
+    security. Off Postgres there is nothing to ask."""
+    if bind is not None or tenant_pinned or conn.dialect.name != "postgresql":
+        return
+    active = conn.execute(
+        sa_select(sa_func.row_security_active(_delivery_t.fullname))
+    ).scalar()
+    if active:
+        raise RuntimeError(
+            f"dispatch_pending() would read {_delivery_t.fullname!r} through row "
+            "level security with no tenant bound, see nothing and report "
+            "success. Pass bind= (a callable that pins the tenant on each "
+            "transaction's connection, for example asas_tenancy.set_tenant_guc), "
+            "tenant_pinned=True when every connection of this engine already "
+            "carries the tenant (asas_tenancy.tenant_engine), or dispatch across "
+            "tenants as a role that bypasses row level security."
         )
 
 
-def dispatch_pending(engine, *, limit: int = 100) -> int:
+def _open_pass(conn, limit: int, bind, tenant_pinned: bool) -> list:
+    """Reclaim stale claims, then read up to ``limit`` pending rows with
+    everything an adapter is handed. The first transaction of a pass."""
+    _refuse_tenant_blind(conn, bind, tenant_pinned)
+    conn.execute(
+        sa_update(_delivery_t)
+        .where(_delivery_t.c.status == DeliveryStatus.sending.value)
+        .where(_delivery_t.c.claimed_at < _stale_cutoff())
+        .values(status=DeliveryStatus.pending.value, claimed_at=None)
+    )
+    return conn.execute(
+        sa_select(
+            _delivery_t.c.id,
+            _delivery_t.c.notification_id,
+            _delivery_t.c.channel,
+            _delivery_t.c.attempts,
+            _notification_t.c.user_id,
+            _notification_t.c.org_id,
+            _notification_t.c.action,
+            _notification_t.c.topic,
+            _notification_t.c.importance,
+            _notification_t.c.title,
+            _notification_t.c.body,
+            _notification_t.c.link,
+            _notification_t.c.data,
+            _notification_t.c.locale,
+            _notification_t.c.created_at,
+        )
+        .select_from(
+            _delivery_t.join(
+                _notification_t,
+                _delivery_t.c.notification_id == _notification_t.c.id,
+            )
+        )
+        .where(_delivery_t.c.status == DeliveryStatus.pending.value)
+        .where(_delivery_t.c.attempts < MAX_ATTEMPTS)
+        .order_by(_delivery_t.c.id)
+        .limit(limit)
+    ).all()
+
+
+def _claim(conn, delivery_id: int) -> bool:
+    """The rows-affected CAS (pending to sending); False when another pass won."""
+    return (
+        conn.execute(
+            sa_update(_delivery_t)
+            .where(_delivery_t.c.id == delivery_id)
+            .where(_delivery_t.c.status == DeliveryStatus.pending.value)
+            .values(status=DeliveryStatus.sending.value, claimed_at=datetime.utcnow())
+        ).rowcount
+        == 1
+    )
+
+
+def _finish(conn, delivery_id: int, **values) -> None:
+    values.setdefault("claimed_at", None)
+    conn.execute(
+        sa_update(_delivery_t).where(_delivery_t.c.id == delivery_id).values(**values)
+    )
+
+
+def _payload(r) -> DeliveryPayload:
+    return DeliveryPayload(
+        delivery_id=r.id,
+        notification_id=r.notification_id,
+        channel=r.channel,
+        recipient_user_id=r.user_id,
+        org_id=r.org_id,
+        action=r.action,
+        topic=r.topic,
+        importance=r.importance,
+        title=r.title,
+        body=r.body,
+        link=r.link,
+        data=r.data,
+        created_at=r.created_at,
+        locale=r.locale,
+    )
+
+
+def _no_adapter() -> dict:
+    return {
+        "status": DeliveryStatus.skipped.value,
+        "last_error": "no adapter registered for channel",
+    }
+
+
+def _outcome(r, exc: Optional[BaseException]) -> dict:
+    """The row's terminal-or-retried values after one send: ``exc`` is what the
+    adapter raised, or None when it returned. Shared by the sync and the async
+    pass, so the two cannot disagree about what a failure means."""
+    if exc is None:
+        return {
+            "status": DeliveryStatus.sent.value,
+            "attempts": r.attempts + 1,
+            "sent_at": datetime.utcnow(),
+            "last_error": None,
+        }
+    if isinstance(exc, SkipDelivery):
+        return {"status": DeliveryStatus.skipped.value, "last_error": str(exc) or None}
+    attempts = r.attempts + 1
+    log.warning("notification delivery %s failed (attempt %s)", r.id, attempts)
+    return {
+        "status": (
+            DeliveryStatus.failed.value
+            if attempts >= MAX_ATTEMPTS
+            else DeliveryStatus.pending.value
+        ),
+        "attempts": attempts,
+        "last_error": str(exc)[:500],
+    }
+
+
+def _deliver(r) -> dict:
+    adapter = adapter_for(r.channel)
+    if adapter is None:
+        return _no_adapter()
+    try:
+        sent = adapter.send(_payload(r))
+        if inspect.isawaitable(sent):
+            # An async adapter called from the sync pass hands back a coroutine
+            # that would never run, and the row would be marked sent. Refused
+            # as a failed attempt instead, so it retries once the host moves
+            # the pass onto the loop.
+            getattr(sent, "close", lambda: None)()
+            raise TypeError(
+                f"the {r.channel!r} adapter is async; dispatch with "
+                "asas_notifications.aio.dispatch_pending"
+            )
+    except Exception as exc:  # noqa: BLE001 — any send error is a retryable failure
+        return _outcome(r, exc)
+    return _outcome(r, None)
+
+
+def dispatch_pending(
+    engine,
+    *,
+    limit: int = 100,
+    bind: Optional[Callable[[Any], Any]] = None,
+    tenant_pinned: bool = False,
+) -> int:
     """Send pending deliveries through their channel adapters. Returns the number
     of rows that reached a terminal-or-retried state this pass. Failed sends stay
     retryable until ``MAX_ATTEMPTS``; a missing adapter or ``SkipDelivery`` marks
@@ -1035,114 +1253,26 @@ def dispatch_pending(engine, *, limit: int = 100) -> int:
     short follow-up transaction. Claims left by a crashed process reclaim to
     pending after ``STALE_CLAIM_SECONDS``. The overall contract stays
     at-least-once (a crash between send and mark re-sends that one row) — same
-    as the jobs queue."""
-    with engine.begin() as conn:
-        conn.execute(
-            sa_update(_delivery_t)
-            .where(_delivery_t.c.status == DeliveryStatus.sending.value)
-            .where(_delivery_t.c.claimed_at < _stale_cutoff())
-            .values(status=DeliveryStatus.pending.value, claimed_at=None)
-        )
-        rows = conn.execute(
-            sa_select(
-                _delivery_t.c.id,
-                _delivery_t.c.notification_id,
-                _delivery_t.c.channel,
-                _delivery_t.c.attempts,
-                _notification_t.c.user_id,
-                _notification_t.c.org_id,
-                _notification_t.c.action,
-                _notification_t.c.topic,
-                _notification_t.c.importance,
-                _notification_t.c.title,
-                _notification_t.c.body,
-                _notification_t.c.link,
-                _notification_t.c.data,
-                _notification_t.c.locale,
-                _notification_t.c.created_at,
-            )
-            .select_from(
-                _delivery_t.join(
-                    _notification_t,
-                    _delivery_t.c.notification_id == _notification_t.c.id,
-                )
-            )
-            .where(_delivery_t.c.status == DeliveryStatus.pending.value)
-            .where(_delivery_t.c.attempts < MAX_ATTEMPTS)
-            .order_by(_delivery_t.c.id)
-            .limit(limit)
-        ).all()
+    as the jobs queue.
+
+    **Tenancy.** ``bind(conn)`` is called on the connection of every
+    transaction the pass opens, before its first statement: the host pins its
+    tenant there (``lambda c: asas_tenancy.set_tenant_guc(c, tenant)``), exactly
+    as it does for a request. ``tenant_pinned=True`` says the engine's
+    connections already carry the tenant. With neither, a pass over an outbox
+    that row level security hides is refused rather than reported as empty (see
+    :func:`_refuse_tenant_blind`). The async twin is
+    :func:`asas_notifications.aio.dispatch_pending`."""
+    with _begin(engine, bind) as conn:
+        rows = _open_pass(conn, limit, bind, tenant_pinned)
 
     handled = 0
     for r in rows:
-        with engine.begin() as conn:
-            claimed = conn.execute(
-                sa_update(_delivery_t)
-                .where(_delivery_t.c.id == r.id)
-                .where(_delivery_t.c.status == DeliveryStatus.pending.value)
-                .values(
-                    status=DeliveryStatus.sending.value, claimed_at=datetime.utcnow()
-                )
-            ).rowcount
-        if claimed != 1:
-            continue  # another pass owns this row
-        adapter = adapter_for(r.channel)
-        if adapter is None:
-            _finish(
-                engine,
-                r.id,
-                status=DeliveryStatus.skipped.value,
-                last_error="no adapter registered for channel",
-            )
-            handled += 1
-            continue
-        payload = DeliveryPayload(
-            delivery_id=r.id,
-            notification_id=r.notification_id,
-            channel=r.channel,
-            recipient_user_id=r.user_id,
-            org_id=r.org_id,
-            action=r.action,
-            topic=r.topic,
-            importance=r.importance,
-            title=r.title,
-            body=r.body,
-            link=r.link,
-            data=r.data,
-            created_at=r.created_at,
-            locale=r.locale,
-        )
-        try:
-            adapter.send(payload)
-        except SkipDelivery as exc:
-            _finish(
-                engine,
-                r.id,
-                status=DeliveryStatus.skipped.value,
-                last_error=str(exc) or None,
-            )
-        except Exception as exc:  # noqa: BLE001 — any send error is a retryable failure
-            attempts = r.attempts + 1
-            _finish(
-                engine,
-                r.id,
-                status=(
-                    DeliveryStatus.failed.value
-                    if attempts >= MAX_ATTEMPTS
-                    else DeliveryStatus.pending.value
-                ),
-                attempts=attempts,
-                last_error=str(exc)[:500],
-            )
-            log.warning("notification delivery %s failed (attempt %s)", r.id, attempts)
-        else:
-            _finish(
-                engine,
-                r.id,
-                status=DeliveryStatus.sent.value,
-                attempts=r.attempts + 1,
-                sent_at=datetime.utcnow(),
-                last_error=None,
-            )
+        with _begin(engine, bind) as conn:
+            if not _claim(conn, r.id):
+                continue  # another pass owns this row
+        values = _deliver(r)
+        with _begin(engine, bind) as conn:
+            _finish(conn, r.id, **values)
         handled += 1
     return handled

@@ -10,7 +10,9 @@ claims with stale-claim reclaim) and at-least-once overall.
 
 Host contract (table-owning + router variant):
 
-- :func:`migrate` — package Alembic chain (adopt-or-create).
+- :func:`migrate` — package Alembic chain (adopt-or-create), on an engine or a
+  connection; optionally in a named Postgres schema (:func:`configure_schema`)
+  and with row level security on the tenant tables (``tenant_guc=``).
 - :func:`build_router` — the ``/me/notifications`` feed API; the host passes its
   session dependency and applies auth at include time.
 - :func:`configure_context_resolver` / :func:`configure_recipient_filter` — the
@@ -20,6 +22,8 @@ Host contract (table-owning + router variant):
   vocabulary and channel adapters (email, chat, …) are the host's.
 - :func:`dispatch_pending` — one outbox pass; the host owns the cadences
   (after-commit hook, boot sweep, periodic job).
+- :mod:`asas_notifications.aio` — the async twins for an ``AsyncSession`` host
+  (DR 0005): same functions, on the caller's connection and transaction.
 - :func:`register_kind` — **deprecated shim** (one release): maps a registered
   kind's defaults onto the axes for legacy ``notify(kind=...)`` emits.
 """
@@ -32,7 +36,7 @@ from .channels import (
     SkipDelivery,
     register_adapter,
 )
-from .migrate import migrate
+from .placement import TENANT_TABLES, configure_schema, configured_schema, migrate
 from .models import (
     IMPORTANCE_KEY_LENGTH,
     PLATFORM_IMPORTANCES,
@@ -61,7 +65,7 @@ from .service import (
     suppressed,
 )
 
-__version__ = "0.19.0"
+__version__ = "0.20.0"
 
 __all__ = [
     "ChannelAdapter",
@@ -80,11 +84,14 @@ __all__ = [
     "PLATFORM_IMPORTANCES",
     "RETIRED_URGENCY",
     "SkipDelivery",
+    "TENANT_TABLES",
     "build_router",
     "config_cache_clear",
     "configure_context_resolver",
     "configure_locale_resolver",
     "configure_recipient_filter",
+    "configure_schema",
+    "configured_schema",
     "dispatch_pending",
     "importance_from_legacy_urgency",
     "migrate",

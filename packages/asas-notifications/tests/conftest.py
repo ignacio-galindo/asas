@@ -33,6 +33,8 @@ def _clean_registries():
     # A new module-level seam needs a matching reset here, or the first test to
     # configure it silently changes every test that runs after it.
     service._locale_resolver = None
+    if asas_notifications.configured_schema() is not None:
+        asas_notifications.configure_schema(None)
 
 
 @pytest.fixture()
@@ -100,3 +102,31 @@ def emit(session, kind, recipients, **kw):
     rows = asas_notifications.notify(session, recipients, kind, **kw)
     session.commit()
     return rows
+
+
+def async_url(engine) -> str:
+    """The same database through its async driver: aiosqlite for the SQLite file,
+    asyncpg for Postgres. So the async suites run on both legs of the matrix with
+    no environment of their own."""
+    url = engine.url
+    driver = "sqlite+aiosqlite" if url.get_backend_name() == "sqlite" else "postgresql+asyncpg"
+    return url.set(drivername=driver).render_as_string(hide_password=False)
+
+
+def on_async_engine(engine, body):
+    """Run ``await body(async_engine)`` in a fresh event loop, on an
+    ``AsyncEngine`` over the same database as the sync ``engine``, disposed
+    before the loop closes. A pooled asyncpg connection belongs to the loop
+    that opened it, so the engine cannot outlive one ``asyncio.run``."""
+    import asyncio
+
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    async def main():
+        eng = create_async_engine(async_url(engine))
+        try:
+            return await body(eng)
+        finally:
+            await eng.dispose()
+
+    return asyncio.run(main())

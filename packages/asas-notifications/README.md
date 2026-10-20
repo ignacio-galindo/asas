@@ -29,8 +29,8 @@ Engine rules baked in (from Teamy's WXL-209 epic):
   At-least-once overall; failures retry to an attempt cap, `SkipDelivery` marks
   a graceful no-retry skip.
 
-Table-owning + router variant of the Asas host contract (4 tables; org/user
-refs are plain ints — no host FKs):
+Table-owning + router variant of the Asas host contract (5 tables; org/user
+refs are opaque strings — no host FKs):
 
 - **`migrate(engine)`** — package Alembic chain
   (`alembic_version_asas_notifications`, adopt-or-create).
@@ -81,6 +81,62 @@ notifications.notify(session, recipient_user_ids, "workflow.request_approval",
 # dispatch cadence of your choosing
 notifications.dispatch_pending(engine)
 ```
+
+## Async hosts, a schema of your own, and row level security (0.20.0)
+
+**An `AsyncSession` host** imports the async twins (DR 0005). Every function is
+the sync one, run on the caller's connection and inside the caller's
+transaction through SQLAlchemy's greenlet bridge: a rollback takes the
+notification and its outbox rows with it, nothing blocks the loop, and there is
+no second engine or driver. The bridge flushes before it returns and hands back
+frozen `NotificationRecord`s, so the two traps of a hand-written bridge (lost
+deliveries, detached rows) are closed in the package. Install
+`asas-notifications[async]`.
+
+```python
+from asas_notifications import aio as notifications
+
+await notifications.migrate(async_engine)          # its own connection, no sync engine
+rows = await notifications.notify(session, [user_id], "order.approve",
+                                  topic="orders", importance="high",
+                                  title="Order approved", org_id=tenant)
+await session.commit()                             # the host's commit, as ever
+await notifications.dispatch_pending(async_engine, bind=pin_tenant)
+```
+
+Seams (`configure_context_resolver` and the rest) stay sync callables and are
+handed `session.sync_session`, whose `info` is the async session's own.
+
+**A named Postgres schema** for a host that keeps each module in its own:
+
+```python
+notifications.configure_schema("notifications")   # every process, at startup
+notifications.migrate(engine)                      # tables + version table in it
+```
+
+The package's tables are qualified, so every statement names the schema on any
+connection; `migrate` creates the schema when missing and checks for adoption
+there and only there. Postgres only; leave it unset on SQLite.
+
+**Row level security** on the tenant tables (`notification`,
+`notification_delivery`), written by `asas_tenancy.enable_rls` keyed on
+`org_id` as text against your own session variable. Needs `asas-tenancy`
+(`asas-notifications[tenancy]`); a no-op off Postgres; takes no lock when the
+policies are already in place:
+
+```python
+notifications.migrate(engine, tenant_guc="procure.tenant_id")
+
+pin = lambda conn: asas_tenancy.set_tenant_guc(conn, tenant, guc="procure.tenant_id")
+notifications.dispatch_pending(engine, bind=pin)   # or aio.dispatch_pending(async_engine, bind=pin)
+```
+
+`bind` runs on every transaction a dispatch pass opens. A pass over a protected
+outbox with no `bind` (and no `tenant_pinned=True` for an engine whose
+connections already carry the tenant) raises instead of reading an empty queue
+and reporting success; a role that bypasses row level security dispatches
+across tenants as before. The configuration tables stay readable to every
+tenant (their platform rows are shared); see `placement.TENANT_TABLES` for why.
 
 ## Feed state: two independent axes
 
