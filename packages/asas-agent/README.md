@@ -34,6 +34,20 @@ release["id"]  # pin this on the run
 asas_agent.stage_tools(release, "intake")  # the tools an intake run is offered
 ```
 
+A run: the host dispatches the tools, answers the agent's questions and renders its
+record (`asas_agent.ContextRenderer`); the package runs the skills.
+
+```python
+result = await asas_agent.run_agent(
+    {"release": release, "tools": tools, "history": history},
+    dispatch,  # (call_id, name, arguments, active_skill) -> the tool's result
+    ask,  # (call_id, arguments) -> the person's answer, or raise AskPending
+    renderer=my_renderer,
+    provider=my_provider,
+)
+result["answer"], result["tool_trace"], result["history"]
+```
+
 ```bash
 asas-agent eval evals/assistant --attempt my_app.evals:attempt --output report.json
 ```
@@ -41,7 +55,7 @@ asas-agent eval evals/assistant --attempt my_app.evals:attempt --output report.j
 Pin it like every Asas package, by tag or by commit:
 
 ```
-asas-agent @ git+https://github.com/wlootah-a11y/asas.git@asas-agent/v0.2.1#subdirectory=packages/asas-agent
+asas-agent @ git+https://github.com/wlootah-a11y/asas.git@asas-agent/v0.3.0#subdirectory=packages/asas-agent
 ```
 
 The package shape and the seams: [`DESIGN.md`](DESIGN.md). What changed:
