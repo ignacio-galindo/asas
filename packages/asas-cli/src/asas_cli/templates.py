@@ -223,6 +223,51 @@ SNIPPETS: dict[str, BootSnippet] = {
             ("oracle_password", "str", '""'),
         ),
     ),
+    "graph": BootSnippet(
+        imports=("import functools", "import asas_graph"),
+        setup=(
+            "@functools.cache  # ONE client per process: fresh clients per call would\n"
+            "def graph_client() -> asas_graph.GraphClient:  # re-pay the token round trip\n"
+            "    # Built on first use so an unconfigured scaffold still boots; an empty\n"
+            "    # tenant/client/secret fails loud here with GraphConfigError.\n"
+            "    # Close at shutdown: await graph_client().aclose() in your lifespan hook.\n"
+            "    return asas_graph.GraphClient(asas_graph.GraphSettings(\n"
+            "        tenant_id=settings.graph_tenant_id,\n"
+            "        client_id=settings.graph_client_id,\n"
+            "        client_secret=settings.graph_client_secret,\n"
+            "    ))",
+            "# teams = asas_graph.TeamsMeetings(graph_client(), organizer=settings.graph_organizer)",
+            "# await teams.create(subject, start, end, attendees=[asas_graph.Attendee(email)])  "
+            "# TODO: needs Calendars.ReadWrite (application), admin-consented",
+        ),
+        settings_fields=(
+            ("graph_tenant_id", "str", '""'),
+            ("graph_client_id", "str", '""'),
+            ("graph_client_secret", "str", '""'),
+            ("graph_organizer", "str", '""'),
+        ),
+    ),
+    "llm": BootSnippet(
+        imports=("import asas_llm", "import asas_llm.middleware", "from pathlib import Path"),
+        setup=(
+            "asas_llm.configure(\n"
+            '    prompts=asas_llm.LocalPromptStore(Path("./prompts")),  '
+            "# TODO: asas_llm.LayeredPromptStore(asas_llm.langfuse.LangfusePromptStore(client), asas_llm.LocalPromptStore(...)) in prod\n"
+            "    model_factory=lambda model, options: None,  "
+            "# TODO: asas_llm.runners.openai_compatible(api_key=..., base_url=...) or azure_openai(...)\n"
+            '    default_model="gpt-4o-mini",  # TODO: your default model\n'
+            "    # tracer=asas_llm.langfuse.LangfuseTracer(client),  # TODO: only with Langfuse; NullTracer otherwise\n"
+            ")",
+            "app.add_middleware(asas_llm.middleware.TraceIdMiddleware)  # X-Correlation-Id in, X-Trace-Id out",
+        ),
+    ),
+    "agent": BootSnippet(
+        imports=("import asas_agent", "from pathlib import Path"),
+        setup=(
+            '# release = asas_agent.load_release(settings.model, Path("agents"), agent="assistant")  '
+            "# TODO: your agent's folder; pin release[\"id\"] on every run",
+        ),
+    ),
     "mcp": BootSnippet(
         imports=("import asas_mcp", "from starlette.routing import Route"),
         setup=(

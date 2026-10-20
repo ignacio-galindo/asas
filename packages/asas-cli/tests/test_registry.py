@@ -16,6 +16,9 @@ EXPECTED_KEYS = {
     "tenancy",
     "audit",
     "oracle",
+    "graph",
+    "llm",
+    "agent",
 }
 
 

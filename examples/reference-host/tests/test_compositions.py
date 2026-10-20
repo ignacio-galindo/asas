@@ -30,9 +30,12 @@ def _ticket(session, **kwargs) -> Ticket:
 
 
 def _notifications_for(session, user_id: int) -> list:
+    # Compared in the package's storage form: identity columns are opaque
+    # strings since asas-notifications 0.17.0, and Postgres refuses a VARCHAR
+    # compared with an integer where SQLite quietly coerced it.
     return session.exec(
         select(asas_notifications.Notification).where(
-            asas_notifications.Notification.user_id == user_id
+            asas_notifications.Notification.user_id == str(user_id)
         )
     ).all()
 
@@ -209,9 +212,7 @@ def test_notification_recipients_are_filtered_by_clearance(app_module, agents):
             [agents["viewer"].id],
             "ticket.assigned",
             topic="tickets",
-            nature=asas_notifications.Nature.action,
-            urgency=asas_notifications.Urgency.normal,
-            reason=asas_notifications.Reason.participant,
+            importance=asas_notifications.Importance.high,
             title="Restricted ticket assigned",
             entity_type="ticket",
             entity_id=ticket.id,
@@ -313,7 +314,9 @@ def test_sla_notification_rows_carry_the_hosts_org(app_module, agents):
             if "past its due date" in n.title
         ]
         assert breaches, "the sweep emitted nothing"
-        assert all(n.org_id == DEFAULT_ORG_ID for n in breaches), (
+        # Identity columns are opaque strings since 0.19 (the package stores
+        # what the host hands it as text), so the host's int org reads as "1".
+        assert all(n.org_id == str(DEFAULT_ORG_ID) for n in breaches), (
             f"resolver-stamped rows carry org {[n.org_id for n in breaches]}, "
             f"not the host's org {DEFAULT_ORG_ID} — the resolver tuple is "
             f"probably reversed"
