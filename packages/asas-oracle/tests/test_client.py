@@ -213,6 +213,21 @@ def test_the_one_lifecycle_refusal_a_second_attempt_can_pass_is_told_apart(clien
     assert entry.value.is_transient is False
 
 
+def test_a_lifecycle_refusal_answered_as_a_409_is_classed_the_same(client, oracle):
+    # The classifier accepts 409 beside 400 for both lifecycle classes, so a
+    # Fusion that answers the conflict status is not left to the generic error.
+    oracle.route("/requisitions/R-1", (409, {"detail": "Target state is not adjacent to current state"}))
+    with pytest.raises(OracleStateRefusedError) as refused:
+        run(client.patch("/requisitions/R-1", {"PhaseId": 5}))
+    assert refused.value.status == 409
+    assert not isinstance(refused.value, OraclePhaseEntryRequiredError)
+
+    oracle.route("/requisitions/R-2", (409, {"detail": "Cannot move directly into new phase terminal state"}))
+    with pytest.raises(OraclePhaseEntryRequiredError) as entry:
+        run(client.patch("/requisitions/R-2", {"PhaseId": 5, "StateId": 25}))
+    assert entry.value.status == 409
+
+
 def test_a_lifecycle_refusal_does_not_trip_the_breaker(client, oracle):
     # One record refusing a move says nothing about whether Oracle is
     # reachable, so it must not switch the resource off for everybody.

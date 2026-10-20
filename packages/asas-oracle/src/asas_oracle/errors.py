@@ -138,8 +138,11 @@ class OracleStateRefusedError(OracleUpstreamError):
     ``LifecycleAMImpl.setCurrentPhaseAndState`` or
     ``PhaseStepProcessor.activateStateStep``.
 
-    Not transient, so it never trips the circuit breaker: one record refusing
-    a move says nothing about whether Oracle is reachable.
+    It never trips the circuit breaker, but not because it is not transient:
+    the breaker counts only outage statuses (no response, or one of
+    :data:`asas_oracle.upstream.OUTAGE_STATUSES`), and a 400 or 409 is neither.
+    That is right here too, since one record refusing a move says nothing
+    about whether Oracle is reachable.
     """
 
     @property

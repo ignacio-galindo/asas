@@ -5,6 +5,20 @@ Pre-1.0, a breaking change bumps the **minor**.
 
 Release procedure and the historical tag mapping: [`RELEASING.md`](../../RELEASING.md).
 
+## 0.1.1 (unreleased)
+
+- **Fusion's lifecycle refusals are their own classes.** `OracleStateRefusedError`
+  for a phase or state move the record's lifecycle will not allow, and
+  `OraclePhaseEntryRequiredError` (a subclass) for the one such refusal a second
+  attempt can pass, by entering the target phase at a non-terminal state first.
+  Both are 400s with prose, so they are matched on Oracle's words like the
+  duplicate and the lock already were, and both are deliberately NOT transient:
+  the move is a verdict on the record, so a caller with an outbox must fail the
+  row rather than retry it, which is the opposite of what `OracleLockedError`
+  asks for. Measured across 169 phase and state moves on a Fusion recruiting
+  instance. The subclassing is the safe default: a caller that knows only the
+  parent treats the recoverable one as final.
+
 ## 0.1.0 (unreleased)
 
 First release. Extracted from a product's working Oracle Fusion integration and
@@ -21,17 +35,6 @@ resources a product reads and which it caches stay with the product.
   totals read as `None`), `iter_collection`, `get_bytes`, `post` and `patch`,
   each with the media type Oracle insists on. Errors are a typed hierarchy with
   no HTTP-status baggage and never carry Oracle's body.
-- **Fusion's lifecycle refusals are their own classes.** `OracleStateRefusedError`
-  for a phase or state move the record's lifecycle will not allow, and
-  `OraclePhaseEntryRequiredError` (a subclass) for the one such refusal a second
-  attempt can pass, by entering the target phase at a non-terminal state first.
-  Both are 400s with prose, so they are matched on Oracle's words like the
-  duplicate and the lock already were, and both are deliberately NOT transient:
-  the move is a verdict on the record, so a caller with an outbox must fail the
-  row rather than retry it, which is the opposite of what `OracleLockedError`
-  asks for. Measured across 169 phase and state moves on a Fusion recruiting
-  instance. The subclassing is the safe default: a caller that knows only the
-  parent treats the recoverable one as final.
 - **The read cache is a seam.** A four-method `Cache` protocol with
   `MemoryCache` (default) and `NullCache`, and a `CachePolicy` saying which
   resources are cached, for how long, and which writes make them stale. The

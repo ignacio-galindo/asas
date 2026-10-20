@@ -150,7 +150,7 @@ from .upstream import (
 #: served to a v2 reader.
 REST_FRAMEWORK_V2: dict[str, str] = {"REST-Framework-Version": "2"}
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 __all__ = [
     "ApiKeyAuth",
