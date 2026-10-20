@@ -15,6 +15,10 @@ asas_agent/
                  (imports the SDK and the OpenAI client; loaded on first use)
   tracing.py     LangfuseTracingProcessor: the SDK's run traces in Langfuse 2.x
                  (imports the SDK; loaded on first use)
+  seams.py       the Protocols a host fills: ToolDispatcher, AskHandler, SkillAware,
+                 ContextRenderer
+  loop.py        run_agent, instructions_for, described_tools, model_settings
+                 (imports the SDK; loaded on first use)
   cli.py         asas-agent eval
 ```
 
@@ -29,10 +33,10 @@ engine, and a run's moving parts reach the host through seams the host fills.
 
 | Seam | What the host supplies | Arrives |
 |---|---|---|
-| model provider | the SDK `Model` a run calls (a gateway, a model called by reference from a workflow, a scripted model in tests) | with the SDK loop |
-| tool dispatcher | `ToolCall` in, the tool's result out, under the host's authorisation and gates | with the SDK loop |
-| ask handler | records the agent's question (`Ask`) and returns when the person answers | with the SDK loop |
-| context renderer | the record the agent reads first, and its words in the instructions | with the SDK loop |
+| model provider | the SDK `Model` or `ModelProvider` a run calls (a gateway, a model called by reference from a workflow and told the active skill through `SkillAware`, a scripted model in tests) | 0.3.0 |
+| tool dispatcher | `ToolDispatcher`: the call id, tool name, arguments and active skill in, the tool's result out, under the host's authorisation and gates | 0.3.0 |
+| ask handler | `AskHandler`: records the agent's question and returns when the person answers, or raises `AskPending` | 0.3.0 |
+| context renderer | `ContextRenderer`: the record the agent reads first and finds in tool results, the tools every skill holds, the ask tool, and the host's words before and after the skills | 0.3.0 |
 | run store | the run's transcript, model-call cache, tool effects, inbox and outbox | with the store and its tables |
 | clock | the time the run sees | with the store |
 
@@ -43,6 +47,17 @@ Rules for code here, so a host can call it from a workflow sandbox:
   the host passes what it recorded (`RunInput` carries its deadlines for that
   reason).
 - `import asas_agent` does not import the SDK or the OpenAI client.
+
+## The loop
+
+`run_agent` renders the instructions as the release's prompt, the renderer's
+`head`, the skill catalogue, the active skill's playbook and clauses, then the
+renderer's `tail`, and opens the input with the renderer's `opening` before the
+history. Only `activate_skill` changes the instructions, so the provider's prompt
+cache holds them between writes; the record rides in the input. Tools run one at
+a time in the order the model issued them, so a replay sees the same sequence.
+An `AgentsException` from a seam ends the run; any other exception from the
+dispatcher is a typed refusal the model reads.
 
 ## Releases
 

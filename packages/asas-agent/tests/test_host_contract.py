@@ -57,6 +57,11 @@ def test_the_eval_models_load_on_first_use():
     assert asas_agent.GatewayModels.__module__ == "asas_agent.models"
 
 
+def test_the_sdk_loop_loads_on_first_use_and_its_seams_at_import():
+    assert asas_agent.run_agent.__module__ == "asas_agent.loop"
+    assert asas_agent.ContextRenderer.__module__ == "asas_agent.seams"
+
+
 def test_no_temporal_dependency():
     """Agents are hosted in Temporal by the application, not the other way round."""
     project = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]

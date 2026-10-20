@@ -5,6 +5,41 @@ Pre-1.0, a breaking change bumps the **minor**.
 
 Release procedure and the historical tag mapping: [`RELEASING.md`](../../RELEASING.md).
 
+## 0.3.0
+
+The SDK loop, moved from the first host's agent runtime behind seams the host
+fills. Additive: nothing in 0.2.1 changes, and a host on 0.2.1 needs no code
+change to take it. A minor all the same, because the loop is the package's new
+public API.
+
+- **`run_agent(snapshot, dispatch, ask, *, renderer, model=, provider=,
+  run_model=, trace_sink=, conversation_id=)`** runs a release's skills on the
+  OpenAI Agents SDK until the agent answers, the ask handler raises `AskPending`
+  or an `AgentsException` ends the run. `activate_skill` swaps the playbook and
+  the tools on the next step; a tool outside the active skill is refused with the
+  skill to activate; a failed tool is a typed refusal the model reads; the
+  release's `max_tools` raises `ToolBudgetExceeded`. The result keeps its fields:
+  `answer`, `history`, `active_skill`, `tool_trace`, `record`, `usage`, `ended`.
+- **The seams** (`asas_agent.seams`, named at import without the SDK):
+  `ToolDispatcher` and `AskHandler`, the callables the loop awaits; `SkillAware`,
+  a run model told the active skill (a model called by reference); and
+  `ContextRenderer`, the host's record and words: the tools every skill holds
+  (`always`), the ask tool's name, `activate_skill`'s description, the words while
+  no skill is active, the sections before the skill catalogue (`head`) and after
+  the active skill (`tail`), the record a tool result carries (`record`) and the
+  input items that open the run (`opening`).
+- **Pure helpers a host's model by reference rebuilds from the run's snapshot**:
+  `instructions_for(snapshot, active_skill, renderer)`,
+  `described_tools(snapshot, renderer)`, `model_settings(conversation_id)`; and
+  `failure_tool_trace`, `run_usage`, `empty_usage`, `SkillState`.
+- Loaded on first use like the eval models: `import asas_agent` still loads
+  neither the SDK nor the OpenAI client. The loop reads no clock, environment or
+  global, so a host may run it inside a workflow sandbox; the first host proves
+  it in its Temporal lane.
+- Tracing stays off in the loop's `RunConfig` (`tracing_disabled=True`), as in
+  the host it came from, so a `LangfuseTracingProcessor` sees no run that
+  `run_agent` starts yet. A switch for it is a later, additive change.
+
 ## 0.2.1 (unreleased)
 
 Additive: a host that is on 0.2.0 changes nothing.
