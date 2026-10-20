@@ -84,6 +84,12 @@ Every Asas package holds to the same twelve principles, in no particular order:
 | `asas-notifications` | `asas_notifications` | table-owning + router |
 | `asas-search` | `asas_search` | dialect-branched chain (PG deep tier) |
 | `asas-mcp` | `asas_mcp` | protocol-only |
+| `asas-tenancy` | `asas_tenancy` | table-less, router-less, chain-less (host RLS helpers) |
+| `asas-audit` | `asas_audit` | table-owning (package Alembic chain) + router |
+| `asas-oracle` | `asas_oracle` | table-less, router-less (Oracle Fusion REST client) |
+| `asas-graph` | `asas_graph` | table-less, router-less (Microsoft Graph client, Teams meetings) |
+| `asas-llm` | `asas_llm` | table-less, router-less (prompts, tracing, structured output) |
+| `asas-agent` | `asas_agent` | table-less, router-less (agent releases, skills, run contracts, evals; no Temporal) |
 | `asas-cli` | `asas_cli` | tooling |
 
 Packages version independently; the current version of each lives in its
@@ -128,6 +134,15 @@ Pin a package tag via a git install (no package index):
 
 ```
 asas-lookups @ git+https://github.com/wlootah-a11y/asas.git@asas-lookups/v0.13.2#subdirectory=packages/asas-lookups
+```
+
+A pin is frozen: updates reach your application only when you bump it, and
+what you owe is tiered (see `RELEASING.md`, "The consumer contract") — patch
+releases never require action, minor releases are deliberate upgrades, and
+advisories are the one mandatory refresh. Make the check part of your CI:
+
+```
+asas outdated --ci   # 0 = fine, 1 = breaking changes waiting, 2 = advisory: refresh now
 ```
 
 ## Developing

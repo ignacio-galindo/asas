@@ -13,10 +13,16 @@ EXPECTED_KEYS = {
     "notifications",
     "search",
     "mcp",
+    "tenancy",
+    "audit",
+    "oracle",
+    "graph",
+    "llm",
+    "agent",
 }
 
 
-def test_all_ten_packages_registered():
+def test_all_packages_registered():
     assert set(PACKAGES) == EXPECTED_KEYS
 
 

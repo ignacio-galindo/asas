@@ -98,12 +98,64 @@ _SPECS = [
         "table-owning (dialect-branched), router-less",
     ),
     PackageSpec(
+        "llm",
+        "asas-llm",
+        "asas_llm",
+        "packages/asas-llm",
+        "Prompts as data with a local fallback, per-request tracing with trace-id hand-back, strict structured output.",
+        "table-less, router-less (AI tier)",
+    ),
+    PackageSpec(
+        "agent",
+        "asas-agent",
+        "asas_agent",
+        "packages/asas-agent",
+        "Agents on the OpenAI Agents SDK: content-addressed releases, skills, "
+        "replayable run contracts, procedure evals. No Temporal dependency.",
+        "table-less, router-less (AI tier)",
+    ),
+    PackageSpec(
         "mcp",
         "asas-mcp",
         "asas_mcp",
         "packages/asas-mcp",
         "Remote MCP server core (exposes the host to AI clients over MCP).",
         "protocol-only",
+    ),
+    PackageSpec(
+        "tenancy",
+        "asas-tenancy",
+        "asas_tenancy",
+        "packages/asas-tenancy",
+        "Tenant isolation enforced by Postgres RLS: context, session GUC, "
+        "migration helpers, conformance kit.",
+        "table-less, router-less, chain-less",
+    ),
+    PackageSpec(
+        "audit",
+        "asas-audit",
+        "asas_audit",
+        "packages/asas-audit",
+        "Append-only hash-chained audit log that commits with the change it "
+        "describes, with a verification report.",
+        "table-owning + router",
+    ),
+    PackageSpec(
+        "oracle",
+        "asas-oracle",
+        "asas_oracle",
+        "packages/asas-oracle",
+        "Async Oracle Fusion HCM REST client: typed errors, q-grammar "
+        "helpers, cached id-to-name and people lookups.",
+        "table-less, router-less",
+    ),
+    PackageSpec(
+        "graph",
+        "asas-graph",
+        "asas_graph",
+        "packages/asas-graph",
+        "App-only Microsoft Graph client with typed errors; create/reschedule/cancel Teams meetings.",
+        "table-less, router-less (AI tier)",
     ),
 ]
 
