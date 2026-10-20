@@ -55,7 +55,10 @@ _MODELS = (
 #: right under such a policy (see ``service._importance_rows``).
 TENANT_TABLES = ("notification", "notification_delivery")
 
-_IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+#: Lower case only: Postgres folds an unquoted name to lower case, and a schema
+#: that needs quoting to keep its case is one that some host query (or a
+#: ``regclass`` cast) will spell unquoted and miss.
+_IDENTIFIER = re.compile(r"[a-z_][a-z0-9_]*")
 
 _schema: Optional[str] = None
 _UNSET: Any = object()

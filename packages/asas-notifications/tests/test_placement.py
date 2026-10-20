@@ -138,9 +138,12 @@ def test_the_async_face_runs_in_the_schema(placed):
     assert "notification" in _tables_in(placed, SCHEMA)
 
 
-def test_a_bad_schema_name_is_refused():
+@pytest.mark.parametrize("name", ["x; DROP TABLE y", "Notifications"])
+def test_a_bad_schema_name_is_refused(name):
+    """Injection, and a name that only keeps its case quoted: Postgres folds it
+    wherever it is spelled bare, a ``regclass`` cast included."""
     with pytest.raises(ValueError, match="schema name"):
-        notifications.configure_schema("x; DROP TABLE y")
+        notifications.configure_schema(name)
 
 
 # ── the tenant isolation hook ────────────────────────────────────────────────

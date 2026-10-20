@@ -11,11 +11,18 @@ revision copies it for the rows already there.
 **The backfill must see every row.** A host that already put a FORCE policy on
 these tables (one that wired its own isolation before ``migrate`` offered it)
 would have this ``UPDATE`` filtered down to nothing, because a migration binds no
-tenant, and the ``SET NOT NULL`` after it would then fail blaming the data. So
+tenant, and every existing row would keep a NULL org and stay invisible to its
+tenant's dispatcher. So
 FORCE is lifted for the statement on whichever of the two tables carries it and
 put back in the same transaction; on Postgres the DDL is transactional, so a
 failure rolls the lift back with everything else. This works for the role that
 owns the tables, which is the role that runs ``migrate``.
+
+**The column stays nullable in this revision**, deliberately. During a rolling
+deploy the processes still on 0.19 keep inserting outbox rows without it, and a
+NOT NULL column would fail every emit they make (and the producer transaction
+around it). ``notify`` always writes it from 0.20.0; a later revision backfills
+whatever the old processes wrote in the window and tightens the column.
 
 **A delivery row with no notification fails the revision**, loudly and with its
 count, rather than being deleted. Only a SQLite database with foreign keys off can
@@ -80,8 +87,6 @@ def upgrade() -> None:
             f"NOT IN (SELECT id FROM notification)) and re-run migrate()."
         )
 
-    with op.batch_alter_table(_TABLE) as batch:
-        batch.alter_column("org_id", existing_type=sa.String(length=255), nullable=False)
     op.create_index(_INDEX, _TABLE, ["org_id"])
 
 

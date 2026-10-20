@@ -1085,7 +1085,11 @@ def _refuse_tenant_blind(conn, bind, tenant_pinned: bool) -> None:
     if bind is not None or tenant_pinned or conn.dialect.name != "postgresql":
         return
     active = conn.execute(
-        sa_select(sa_func.row_security_active(_delivery_t.fullname))
+        sa_select(
+            sa_func.row_security_active(
+                conn.dialect.identifier_preparer.format_table(_delivery_t)
+            )
+        )
     ).scalar()
     if active:
         raise RuntimeError(

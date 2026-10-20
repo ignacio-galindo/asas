@@ -15,8 +15,9 @@ import asas_notifications as notifications
 from asas_notifications.migrate import _config
 
 
-def _at_0011_with_an_undelivered_row(engine):
-    command.upgrade(_config(engine), "0011")
+def _insert_as_a_019_writer(engine):
+    """A notification and its outbox row, as a 0.19 process writes them: the
+    INSERT names no org on the delivery."""
     with engine.begin() as conn:
         nid = conn.execute(
             sa.text(
@@ -33,6 +34,11 @@ def _at_0011_with_an_undelivered_row(engine):
         )
 
 
+def _at_0011_with_an_undelivered_row(engine):
+    command.upgrade(_config(engine), "0011")
+    _insert_as_a_019_writer(engine)
+
+
 def _delivery_orgs(engine):
     with engine.connect() as conn:
         return conn.execute(sa.text("SELECT org_id FROM notification_delivery")).scalars().all()
@@ -42,10 +48,15 @@ def test_existing_outbox_rows_get_their_notifications_org(engine):
     _at_0011_with_an_undelivered_row(engine)
     notifications.migrate(engine)
     assert _delivery_orgs(engine) == ["org-a"]
-    col = next(
-        c for c in sa.inspect(engine).get_columns("notification_delivery") if c["name"] == "org_id"
-    )
-    assert col["nullable"] is False
+
+
+def test_a_writer_that_predates_the_column_still_emits(engine):
+    """Rolling deploy: once a new process has migrated, a process still on 0.19
+    inserts outbox rows with no org. The column stays nullable for that window
+    rather than failing the old process's every emit."""
+    notifications.migrate(engine)
+    _insert_as_a_019_writer(engine)
+    assert _delivery_orgs(engine) == [None]
 
 
 @pytest.mark.skipif(

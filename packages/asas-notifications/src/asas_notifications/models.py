@@ -226,7 +226,13 @@ class NotificationDelivery(SQLModel, table=True):
     #: ``0012``) so that row level security can key this table on a column of
     #: its own, as it keys ``notification``. Without it the outbox is the one
     #: table a tenant policy cannot name, and a dispatch pass reads it raw.
-    org_id: str = Field(index=True, max_length=255)
+    #:
+    #: Always written by ``notify``, and NULLABLE in the schema for one release:
+    #: a process still on 0.19 during a rolling deploy inserts outbox rows
+    #: without it, and a NOT NULL column would fail that process's every emit,
+    #: taking its producer's transaction down. A later revision backfills the
+    #: stragglers and tightens it.
+    org_id: Optional[str] = Field(default=None, index=True, max_length=255)
     channel: str = Field(index=True)  # "email" now; "slack"/"teams" later
     status: DeliveryStatus = Field(
         default=DeliveryStatus.pending,

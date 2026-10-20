@@ -21,8 +21,9 @@ under 0.17.0 to 0.19.0 below as well as the ones here. Read them first.
 
 - **A tenant-blind dispatch pass over a protected outbox raises.** A host that
   dispatched through `asas_tenancy.tenant_engine` passes `tenant_pinned=True`.
-- **`NotificationDelivery.org_id` is NOT NULL.** A host that inserts outbox rows
-  itself sets it to the notification's `org_id`.
+- **A host that inserts outbox rows itself sets `NotificationDelivery.org_id`**
+  to the notification's `org_id`; under the tenant policy a row without it is
+  invisible to every tenant, its dispatcher included.
 - **Feed writes under a transaction-local tenant pin.** `mark_read`, `archive`
   and `unarchive` commit and then refresh the row, so the refresh runs in a new
   transaction. Unchanged behaviour, newly visible: under row level security a
@@ -80,6 +81,10 @@ under 0.17.0 to 0.19.0 below as well as the ones here. Read them first.
   can carry a policy on a column of its own. The backfill lifts FORCE for its
   one statement on a host that had already forced its own policies, and fails
   loud, with the count and the fix, on a delivery row with no notification.
+  The column stays nullable for this release, so a 0.19 process still emitting
+  during a rolling deploy keeps working; a later revision backfills what it
+  wrote and tightens the column. Under the tenant policy such a straggler row
+  waits, invisible, for that backfill or for a pass as a role that bypasses.
 - **`dispatch_pending(engine, bind=..., tenant_pinned=...)`**, sync and async:
   `bind(conn)` pins the tenant on every transaction a pass opens. With neither
   argument, a pass over an outbox that row level security hides **raises**
