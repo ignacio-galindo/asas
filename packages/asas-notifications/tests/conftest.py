@@ -30,6 +30,11 @@ def _clean_registries():
     service._context_resolver = None
     service._recipient_filter = None
     service.config_cache_clear()
+    # A new module-level seam needs a matching reset here, or the first test to
+    # configure it silently changes every test that runs after it.
+    service._locale_resolver = None
+    if asas_notifications.configured_schema() is not None:
+        asas_notifications.configure_schema(None)
 
 
 @pytest.fixture()
@@ -68,7 +73,13 @@ def session(migrated):
 
 @pytest.fixture()
 def kind(session):
-    """A registered 'normal' (email-routing) kind with a unique name."""
+    """A registered email-routing kind with a unique name.
+
+    Registered in the 0.15 vocabulary on purpose: ``register_kind`` is the
+    deprecated shim for exactly such a wiring, so its frozen signature is what
+    these fixtures exercise. The ``normal`` rung folds up into ``importance =
+    high``, which routes to email as it always did.
+    """
     name = f"test.{uuid.uuid4().hex[:8]}"
     asas_notifications.register_kind(
         name, category="info", urgency="normal", reason="participant"
@@ -78,7 +89,7 @@ def kind(session):
 
 @pytest.fixture()
 def ambient_kind(session):
-    """A registered 'low' (in-app only) kind with a unique name."""
+    """A registered quiet (in-app only) kind with a unique name."""
     name = f"ambient.{uuid.uuid4().hex[:8]}"
     asas_notifications.register_kind(
         name, category="info", urgency="low", reason="participant"
@@ -91,3 +102,31 @@ def emit(session, kind, recipients, **kw):
     rows = asas_notifications.notify(session, recipients, kind, **kw)
     session.commit()
     return rows
+
+
+def async_url(engine) -> str:
+    """The same database through its async driver: aiosqlite for the SQLite file,
+    asyncpg for Postgres. So the async suites run on both legs of the matrix with
+    no environment of their own."""
+    url = engine.url
+    driver = "sqlite+aiosqlite" if url.get_backend_name() == "sqlite" else "postgresql+asyncpg"
+    return url.set(drivername=driver).render_as_string(hide_password=False)
+
+
+def on_async_engine(engine, body):
+    """Run ``await body(async_engine)`` in a fresh event loop, on an
+    ``AsyncEngine`` over the same database as the sync ``engine``, disposed
+    before the loop closes. A pooled asyncpg connection belongs to the loop
+    that opened it, so the engine cannot outlive one ``asyncio.run``."""
+    import asyncio
+
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    async def main():
+        eng = create_async_engine(async_url(engine))
+        try:
+            return await body(eng)
+        finally:
+            await eng.dispose()
+
+    return asyncio.run(main())
