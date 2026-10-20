@@ -3,9 +3,12 @@
 A generic notification engine (DR 0003): producers call `notify` inside their
 own transaction — the insert IS the enqueue, so a notification exists iff the
 domain change committed — passing the **application action** that caused the
-emit (`action="job.publish"`, a reference declared nowhere) and four
-classification **axes** (topic × nature × urgency × reason). Behavior attaches
-to the axes, never to individual actions; the DB stores only deviations.
+emit (`action="job.publish"`, a reference declared nowhere) and the two
+classification **axes** that decide a channel (topic × importance). Behavior
+attaches to the axes, never to individual actions; the DB stores only
+deviations. DR 0003 had four: `reason` (why this recipient) went in 0.17.0 with
+the preference layer it was reserved for, and `nature` (what it asks of you)
+went in 0.18.0 because it was presentation and the host renders its own feed.
 The in-app feed is the `notification` row itself (`build_router` serves it);
 external channels go through the `notification_delivery` outbox and registered
 **channel adapters** (email, chat, …).
@@ -17,7 +20,7 @@ Engine rules baked in (from Teamy's WXL-209 epic):
   so a notification never leaks a private record.
 - **Data-driven routing** — per channel, most specific wins: topic policy row →
   axis policy row → the built-in fallback (`low` is in-app only — ambient
-  activity never emails; `normal`/`high` add email). Empty policy tables
+  activity never emails; `high` adds email). Empty policy tables
   reproduce the fallback exactly. Unread ambient rows can **coalesce** per
   (org, recipient, action, entity) so an edit burst stays one bell entry.
 - **Duplicate-safe dispatch** — each outbox row is claimed with a rows-affected
@@ -26,8 +29,8 @@ Engine rules baked in (from Teamy's WXL-209 epic):
   At-least-once overall; failures retry to an attempt cap, `SkipDelivery` marks
   a graceful no-retry skip.
 
-Table-owning + router variant of the Asas host contract (4 tables; org/user
-refs are plain ints — no host FKs):
+Table-owning + router variant of the Asas host contract (5 tables; org/user
+refs are opaque strings — no host FKs):
 
 - **`migrate(engine)`** — package Alembic chain
   (`alembic_version_asas_notifications`, adopt-or-create).
@@ -70,14 +73,70 @@ app.include_router(notifications.build_router(get_session),
 
 # producers (inside their own transaction)
 notifications.notify(session, recipient_user_ids, "workflow.request_approval",
-                     topic="approvals", nature="action", urgency="normal",
-                     reason="participant", title="Budget change",
+                     topic="approvals", importance="high",
+                     title="Budget change",
                      record=project, entity_type="project",
                      entity_id=project.id, actor_user_id=actor.id)
 
 # dispatch cadence of your choosing
 notifications.dispatch_pending(engine)
 ```
+
+## Async hosts, a schema of your own, and row level security (0.20.0)
+
+**An `AsyncSession` host** imports the async twins (DR 0005). Every function is
+the sync one, run on the caller's connection and inside the caller's
+transaction through SQLAlchemy's greenlet bridge: a rollback takes the
+notification and its outbox rows with it, nothing blocks the loop, and there is
+no second engine or driver. The bridge flushes before it returns and hands back
+frozen `NotificationRecord`s, so the two traps of a hand-written bridge (lost
+deliveries, detached rows) are closed in the package. Install
+`asas-notifications[async]`.
+
+```python
+from asas_notifications import aio as notifications
+
+await notifications.migrate(async_engine)          # its own connection, no sync engine
+rows = await notifications.notify(session, [user_id], "order.approve",
+                                  topic="orders", importance="high",
+                                  title="Order approved", org_id=tenant)
+await session.commit()                             # the host's commit, as ever
+await notifications.dispatch_pending(async_engine, bind=pin_tenant)
+```
+
+Seams (`configure_context_resolver` and the rest) stay sync callables and are
+handed `session.sync_session`, whose `info` is the async session's own.
+
+**A named Postgres schema** for a host that keeps each module in its own:
+
+```python
+notifications.configure_schema("notifications")   # every process, at startup
+notifications.migrate(engine)                      # tables + version table in it
+```
+
+The package's tables are qualified, so every statement names the schema on any
+connection; `migrate` creates the schema when missing and checks for adoption
+there and only there. Postgres only; leave it unset on SQLite.
+
+**Row level security** on the tenant tables (`notification`,
+`notification_delivery`), written by `asas_tenancy.enable_rls` keyed on
+`org_id` as text against your own session variable. Needs `asas-tenancy`
+(`asas-notifications[tenancy]`); a no-op off Postgres; takes no lock when the
+policies are already in place:
+
+```python
+notifications.migrate(engine, tenant_guc="procure.tenant_id")
+
+pin = lambda conn: asas_tenancy.set_tenant_guc(conn, tenant, guc="procure.tenant_id")
+notifications.dispatch_pending(engine, bind=pin)   # or aio.dispatch_pending(async_engine, bind=pin)
+```
+
+`bind` runs on every transaction a dispatch pass opens. A pass over a protected
+outbox with no `bind` (and no `tenant_pinned=True` for an engine whose
+connections already carry the tenant) raises instead of reading an empty queue
+and reporting success; a role that bypasses row level security dispatches
+across tenants as before. The configuration tables stay readable to every
+tenant (their platform rows are shared); see `placement.TENANT_TABLES` for why.
 
 ## Feed state: two independent axes
 
@@ -94,13 +153,11 @@ read and to leave only when the recipient acts on it or files it away — an
 | --- | --- | --- |
 | `state` | `open` (un-archived) · `archived` · `all` | `open` |
 | `unread_only` | bool | `false` |
-| `nature` | `action` · `info` · `warning` | all |
 
-(`category` is accepted as a deprecated alias for `nature` for one release.)
-
-So `?state=open&nature=action` is "still needs me", `?state=archived` is the
-history, and `?unread_only=true` is the classic feed. `total` reflects the
-filters; **`unread_count` never does** — it is unread-and-un-archived on every
+There is no presentation filter: `nature` left the package in 0.18.0, and a host
+that wants one keeps it on a row of its own. `?state=open&unread_only=true` is
+"still needs me", `?state=archived` is the history, and `?unread_only=true` is
+the classic feed. `total` reflects the filters; **`unread_count` never does** — it is unread-and-un-archived on every
 response, so a badge fed from any list call agrees with every other.
 
 Writes: `POST /{id}/read`, `/read-all`, `/{id}/archive`, `/{id}/unarchive`, and

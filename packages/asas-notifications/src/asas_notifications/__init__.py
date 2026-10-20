@@ -1,20 +1,18 @@
 """Asas notifications — generic notification engine with a per-channel outbox.
 
 Extracted from Teamy (epic WXL-209/WXL-222; extraction epic TEAMY-466, design
-record 0017; reshaped by DR 0003). The package never imports host models.
-Producers emit through :func:`notify` inside their own transaction (the insert
-IS the enqueue), passing the application ``action`` that caused the event — a
-reference, declared nowhere — plus four classification axes
-(``topic``/``nature``/``urgency``/``reason``); routing attaches to the axes via
-the policy tables, never to individual actions. The in-app feed is the
-``notification`` row itself; every other channel goes through the
-``notification_delivery`` outbox and a registered channel adapter. Dispatch is
-duplicate-safe under concurrent passes (per-row CAS claims with stale-claim
-reclaim) and at-least-once overall.
+record 0017). The package never imports host models. Producers emit through
+:func:`notify` inside their own transaction, passing the action plus the two
+axes that route it, ``topic`` and ``importance`` (the insert IS the enqueue); the in-app feed is the ``notification`` row itself; every other
+channel goes through the ``notification_delivery`` outbox and a registered
+channel adapter. Dispatch is duplicate-safe under concurrent passes (per-row CAS
+claims with stale-claim reclaim) and at-least-once overall.
 
 Host contract (table-owning + router variant):
 
-- :func:`migrate` — package Alembic chain (adopt-or-create).
+- :func:`migrate` — package Alembic chain (adopt-or-create), on an engine or a
+  connection; optionally in a named Postgres schema (:func:`configure_schema`)
+  and with row level security on the tenant tables (``tenant_guc=``).
 - :func:`build_router` — the ``/me/notifications`` feed API; the host passes its
   session dependency and applies auth at include time.
 - :func:`configure_context_resolver` / :func:`configure_recipient_filter` — the
@@ -24,6 +22,8 @@ Host contract (table-owning + router variant):
   vocabulary and channel adapters (email, chat, …) are the host's.
 - :func:`dispatch_pending` — one outbox pass; the host owns the cadences
   (after-commit hook, boot sweep, periodic job).
+- :mod:`asas_notifications.aio` — the async twins for an ``AsyncSession`` host
+  (DR 0005): same functions, on the caller's connection and transaction.
 - :func:`register_kind` — **deprecated shim** (one release): maps a registered
   kind's defaults onto the axes for legacy ``notify(kind=...)`` emits.
 """
@@ -36,17 +36,18 @@ from .channels import (
     SkipDelivery,
     register_adapter,
 )
-from .migrate import migrate
+from .placement import TENANT_TABLES, configure_schema, configured_schema, migrate
 from .models import (
-    Category,  # deprecated alias for Nature (one release)
+    IMPORTANCE_KEY_LENGTH,
+    PLATFORM_IMPORTANCES,
+    RETIRED_URGENCY,
     DeliveryStatus,
-    Nature,
+    Importance,
     Notification,
     NotificationChannelPolicy,
     NotificationDelivery,
+    NotificationImportance,
     NotificationTopic,
-    Reason,
-    Urgency,
 )
 from .router import build_router
 from .service import (
@@ -54,37 +55,45 @@ from .service import (
     IN_APP,
     config_cache_clear,
     configure_context_resolver,
+    configure_locale_resolver,
     configure_recipient_filter,
     dispatch_pending,
+    importance_from_legacy_urgency,
     notify,
     register_kind,  # deprecated shim (DR 0003 I-3; one release)
     resolve_channels,
     suppressed,
 )
 
-__version__ = "0.16.2"
+__version__ = "0.20.0"
 
 __all__ = [
-    "Category",
     "ChannelAdapter",
     "DEFAULT_TOPIC",
     "DeliveryPayload",
     "DeliveryStatus",
+    "IMPORTANCE_KEY_LENGTH",
     "IN_APP",
+    "Importance",
     "LoggingAdapter",
-    "Nature",
     "Notification",
     "NotificationChannelPolicy",
     "NotificationDelivery",
+    "NotificationImportance",
     "NotificationTopic",
-    "Reason",
+    "PLATFORM_IMPORTANCES",
+    "RETIRED_URGENCY",
     "SkipDelivery",
-    "Urgency",
+    "TENANT_TABLES",
     "build_router",
     "config_cache_clear",
     "configure_context_resolver",
+    "configure_locale_resolver",
     "configure_recipient_filter",
+    "configure_schema",
+    "configured_schema",
     "dispatch_pending",
+    "importance_from_legacy_urgency",
     "migrate",
     "notify",
     "register_adapter",
