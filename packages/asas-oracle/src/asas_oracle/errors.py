@@ -9,6 +9,30 @@ verb and the path are enough to act on.
 
 from __future__ import annotations
 
+import re
+
+#: A Fusion message number: an application short name, a dash, a number
+#: (``IRC-1590142``, ``FND-2808``, ``HRC-1035``). Fusion appends it to the
+#: messages in its message dictionary, upper case, usually in parentheses.
+_MESSAGE_CODE = re.compile(r"\b([A-Z][A-Z0-9]{1,7}-\d{3,9})\b")
+
+
+def message_codes(text: str | None) -> tuple[str, ...]:
+    """Fusion's message numbers in a refusal, in order, each once.
+
+    The NUMBER is the part of a Fusion error a caller can rely on: the prose
+    around it is translated with the user's language and reworded between
+    releases, the number is not. It names an entry in Fusion's message
+    dictionary (``GET /fscmRestApi/resources/<version>/messages``), where the
+    cause and the user action live. Safe to log or return, unlike the body it
+    comes from. A lifecycle or framework exception (``PhaseStepProcessor...``)
+    carries none, and answers an empty tuple."""
+    seen: list[str] = []
+    for code in _MESSAGE_CODE.findall(text or ""):
+        if code not in seen:
+            seen.append(code)
+    return tuple(seen[:10])
+
 
 class OracleError(Exception):
     """Base class for everything this package raises."""
@@ -76,6 +100,13 @@ class OracleUpstreamError(OracleError):
         #: response. Truncated for that reason as much as for size.
         self.body = body
         self.content_type = content_type
+
+    @property
+    def message_codes(self) -> tuple[str, ...]:
+        """Fusion's message numbers in this refusal (see `message_codes`):
+        read off the body, which never leaves the exception, so a host can
+        branch on, log or report WHICH refusal it was."""
+        return message_codes(self.body)
 
     @property
     def is_transient(self) -> bool:

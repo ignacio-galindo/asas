@@ -7,6 +7,13 @@ Release procedure and the historical tag mapping: [`RELEASING.md`](../../RELEASI
 
 ## 0.1.0 (unreleased)
 
+- **`message_codes(text)`** and **`OracleUpstreamError.message_codes`**: Fusion's
+  message numbers (`IRC-1590142`, `FND-2808`, ...) read off a refusal, in order,
+  each once. The number is the stable half of a Fusion error (the prose is
+  translated and reworded) and names an entry in Fusion's message dictionary;
+  unlike the body it comes from, it is safe to log or return. A framework or
+  lifecycle exception carries none and answers `()`.
+
 First release. Extracted from a product's working Oracle Fusion integration and
 generalised to be **domain-agnostic**: it knows Fusion (the query grammar, the
 media types, the paging limits, attachments, the HCM reference data) and

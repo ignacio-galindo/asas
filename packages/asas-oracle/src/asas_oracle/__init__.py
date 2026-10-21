@@ -86,6 +86,7 @@ from .errors import (
     OracleQueryError,
     OracleUnavailableError,
     OracleUpstreamError,
+    message_codes,
     transport_detail,
 )
 from .lookups import (
@@ -211,6 +212,7 @@ __all__ = [
     "find_account",
     "holds_any_role",
     "usernames_for",
+    "message_codes",
     "transport_detail",
     "download_attachment",
     "and_",
