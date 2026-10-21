@@ -154,7 +154,7 @@ from .upstream import (
 #: served to a v2 reader.
 REST_FRAMEWORK_V2: dict[str, str] = {"REST-Framework-Version": "2"}
 
-__version__ = "0.1.1"
+__version__ = "0.2.0"
 
 __all__ = [
     "INSTALLED_FLAGS",
