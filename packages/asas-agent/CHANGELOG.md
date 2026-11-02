@@ -8,10 +8,22 @@ Release procedure and the historical tag mapping: [`RELEASING.md`](../../RELEASI
 ## 0.5.0
 
 What Langfuse needs to find a run and the prompt version behind it, on the Langfuse
-2.x client the package already pins. Backward compatible: a host that passes nothing
-new sends what it sent on 0.4.0, and every release keeps its id. Moving to the
-Langfuse SDK v5 (OpenTelemetry) is not part of this release (DESIGN.md).
+2.x client the package already pins, and a release with no skill called with no
+skill machinery. A minor, because what the model reads changes for a skill-less
+release (a host may have measured its prompt against the old text); a release with
+skills reads exactly what it read on 0.4.0, a host that passes nothing new sends
+what it sent, and no release id changes. Moving to the Langfuse SDK v5
+(OpenTelemetry) is not part of this release (DESIGN.md).
 
+- **No `activate_skill` without a skill.** `described_tools` offers it only when the
+  release (or the stage's view of it) holds at least one skill, so a one-shot
+  release calls the model with its host tools alone, often none. On a gateway's
+  chat completions a model that refuses a reasoning effort beside a function tool
+  (gpt-5.5) refused every such call, though the tool could never be used; every
+  call is also the tool's description shorter.
+- **No empty skill sections.** `instructions_for` renders `## Skills` and
+  `## Active skill` (with the renderer's `no_skill`) only when there is a skill;
+  the prompt, the host's head and tail sections are unchanged.
 - **`TraceAttributes`** (`user_id`, `session_id`, `tags`, `version`, `release`,
   `metadata`; frozen, all optional) and `run_agent(..., trace=)`. The processor sends
   user, tags, version and release on the Langfuse trace. `group_id` and
