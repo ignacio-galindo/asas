@@ -5,6 +5,30 @@ Pre-1.0, a breaking change bumps the **minor**.
 
 Release procedure and the historical tag mapping: [`RELEASING.md`](../../RELEASING.md).
 
+## 0.5.0
+
+What Langfuse needs to find a run and the prompt version behind it, on the Langfuse
+2.x client the package already pins. Backward compatible: a host that passes nothing
+new sends what it sent on 0.4.0, and every release keeps its id. Moving to the
+Langfuse SDK v5 (OpenTelemetry) is not part of this release (DESIGN.md).
+
+- **`TraceAttributes`** (`user_id`, `session_id`, `tags`, `version`, `release`,
+  `metadata`; frozen, all optional) and `run_agent(..., trace=)`. The processor sends
+  user, tags, version and release on the Langfuse trace. `group_id` and
+  `trace_metadata` keep working and win over `trace` where both name the same thing.
+  They travel as reserved `langfuse.*` keys in the SDK trace's metadata, stripped
+  from what is forwarded, so a host that opens its own `trace(...)` writes the same
+  keys (README, "Tracing attributes and the prompt link").
+- **The prompt link.** `LangfuseStore.read` returns `source` (the Langfuse prompt's
+  `name`, `version` and the `label` read) in the release. It is provenance: it never
+  enters the content hash, so ids are unchanged, and `build_release` has none. Given
+  such a release, `run_agent` links every generation of the run to that prompt
+  version (`generation(prompt=...)`), also inside a trace the host opened.
+- **Fix:** a generation from the Responses API reached Langfuse with `model=None`
+  (the span exports none). It now gets the response's model, else the run's.
+- **`LangfuseTracingProcessor.shutdown()`** flushes once, later calls do nothing, and
+  neither it nor `force_flush()` raises. The client stays open: it is the host's.
+
 ## 0.4.0
 
 The agent as configuration: a release carries its settings and lives in a store the
