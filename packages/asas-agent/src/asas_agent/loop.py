@@ -37,6 +37,13 @@ from agents.tool import set_function_tool_failure_error_function
 
 from .models import usage_of
 from .seams import AskHandler, ContextRenderer, SkillAware, ToolDispatcher
+from .trace_attributes import (
+    RUN_LINK,
+    RunLink,
+    TraceAttributes,
+    prompt_of,
+    reserved_metadata,
+)
 
 
 class AskPending(AgentsException):
@@ -158,6 +165,21 @@ def model_settings(
     return base.resolve(ModelSettings(**configured)) if configured else base
 
 
+def run_model_name(
+    run_model: Any, model: Any, release: Mapping[str, Any]
+) -> str | None:
+    """The name of the model a run asks for, for the trace: the model object's own
+    `model` when the run is given one, else the model name, else the release's."""
+    for chosen in (run_model, model):
+        if isinstance(chosen, str):
+            return chosen
+        name = getattr(chosen, "model", None)
+        if chosen is not None and isinstance(name, str):
+            return name
+    name = release.get("model")
+    return name if isinstance(name, str) else None
+
+
 async def run_agent(
     snapshot: Mapping[str, Any],
     dispatch: ToolDispatcher,
@@ -172,6 +194,7 @@ async def run_agent(
     output_type: type[Any] | None = None,
     group_id: str | None = None,
     trace_metadata: Mapping[str, Any] | None = None,
+    trace: TraceAttributes | None = None,
 ) -> dict:
     """One run of the release in `snapshot` (`release`, `tools`, `history`, and
     optionally `active_skill` and `record`) until the agent answers, the ask handler
@@ -194,7 +217,13 @@ async def run_agent(
     this run (named after the release, `release_id` in its metadata beside the host's
     `trace_metadata`, in the `group_id` session), and `settings.tracing.sensitive`
     keeps the run's content in it. Off unless the release says so; where the trace
-    goes is the host's `set_trace_processors`."""
+    goes is the host's `set_trace_processors`.
+
+    `trace` (0.5.0) adds what Langfuse should know of the run: user, session, tags,
+    version, release, metadata. `group_id` and `trace_metadata` keep working and win
+    over `trace` where both name the same thing (the session; a metadata key). A
+    release read from a Langfuse prompt links the run's generations to that version,
+    and a generation whose span names no model gets the run's."""
     release = snapshot["release"]
     skills = release["skills"]
     state = SkillState(
@@ -395,12 +424,22 @@ async def run_agent(
         tracing_disabled=not tracing.get("enabled", False),
         trace_include_sensitive_data=bool(tracing.get("sensitive", False)),
         workflow_name=release["name"],
-        group_id=group_id,
+        group_id=group_id or (trace.session_id if trace else None),
         trace_metadata={
+            **reserved_metadata(trace),
+            **(trace.metadata if trace else {}),
             **(trace_metadata or {}),
             "release_id": release.get("id", ""),
         },
         **chosen,
+    )
+    prompt = prompt_of(release)
+    link = RUN_LINK.set(
+        RunLink(
+            model=run_model_name(run_model, model, release),
+            prompt_name=prompt[0] if prompt else None,
+            prompt_version=prompt[1] if prompt else None,
+        )
     )
     try:
         result = await Runner.run(
@@ -422,6 +461,8 @@ async def run_agent(
             "ended": "asked",
             "output": None,
         }
+    finally:
+        RUN_LINK.reset(link)
     answer = result.final_output
     return {
         "answer": answer.strip() if isinstance(answer, str) else "",
