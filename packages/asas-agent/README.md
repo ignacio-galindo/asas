@@ -149,6 +149,41 @@ asked for. A span that names its model keeps it.
 `processor.shutdown()` and `force_flush()` flush the client and never raise;
 `shutdown()` does it once and leaves the client open.
 
+## Langfuse over OpenTelemetry (SDK v3 and later)
+
+A Langfuse v4 server in its events-only ingestion mode refuses the 2.x client's
+`trace-create` and `generation-create` events (HTTP 207, which the 2.x client drops
+silently), so on such a server `LangfuseTracingProcessor` sends nothing that is
+kept. Install the `langfuse-otel` extra instead of `langfuse` and use
+`LangfuseOtelTracingProcessor`; the mapping, the reserved keys, `mask`, the prompt
+link and the model fill are the same, and `LangfuseStore` takes either client:
+
+```python
+from langfuse import Langfuse
+from agents import set_trace_processors
+from asas_agent import LangfuseOtelTracingProcessor, LangfuseStore
+
+client = Langfuse(public_key=..., secret_key=..., base_url=..., environment="dev")
+set_trace_processors([LangfuseOtelTracingProcessor(client, mask=mask)])
+store = LangfuseStore(client, prefix="agent-")
+```
+
+What differs on the wire:
+
+- every observation carries the trace's user (`user.id`), session (`session.id`),
+  tags, version, name and metadata (`langfuse.trace.metadata.<key>`), set through
+  `langfuse.propagate_attributes` in a context of the trace's own, so a span of the
+  host's (a web request's) receives none of them;
+- the release has no per-trace field in v3+ (the client sets it): the
+  `langfuse.release` key travels as the metadata key `asas_release`;
+- the root observation is the trace, named by the workflow name; agent, function
+  and guardrail spans are Langfuse `agent`, `tool` and `guardrail` observations;
+- observations open when the SDK span starts and close when it ends, so both
+  timestamps are real; a call that never ends exports nothing;
+- every metadata value is a string; Langfuse drops a value over 200 characters.
+
+Choose one extra: the 2.x and v3+ clients cannot be installed together.
+
 ## The agent as configuration
 
 A release is the whole agent: prompt, skills, model, budgets and `settings` in

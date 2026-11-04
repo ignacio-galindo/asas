@@ -24,9 +24,10 @@ the version to move a label to.
 Who may move `production` is Langfuse's to enforce (its roles, or a project only a
 release pipeline writes to); the store moves whatever label it is told to.
 
-Needs the Langfuse 2.x client (`pip install 'asas-agent[langfuse]'`); ``import
-asas_agent`` loads this module only when its name is first used. The client is
-synchronous, so its calls run in a worker thread.
+Needs a Langfuse client, 2.x (`pip install 'asas-agent[langfuse]'`) or v3 and later
+(`'asas-agent[langfuse-otel]'`): the three calls it makes are the same on both.
+``import asas_agent`` loads this module only when its name is first used. The client
+is synchronous, so its calls run in a worker thread.
 """
 
 from __future__ import annotations
@@ -40,8 +41,8 @@ RELEASE_LABEL = "release-{}"
 
 
 class LangfuseStore:
-    """A :class:`~asas_agent.seams.ReleaseStore` over a ``langfuse.Langfuse`` (2.x)
-    client the host already has. `prefix` namespaces the prompt names; the SDK's own
+    """A :class:`~asas_agent.seams.ReleaseStore` over a ``langfuse.Langfuse`` (2.x, or
+    v3 and later) client the host already has. `prefix` namespaces the prompt names; the SDK's own
     cache serves a label for `cache_ttl_seconds` and then refreshes it."""
 
     def __init__(
@@ -72,7 +73,7 @@ class LangfuseStore:
             prompt = await asyncio.to_thread(
                 self._get, agent, RELEASE_LABEL.format(release_id[:16]), 0
             )
-        except Exception:  # noqa: BLE001 the 2.x client raises its API's NotFound
+        except Exception:  # noqa: BLE001 each client raises its API's NotFound
             return None
         return prompt.version
 

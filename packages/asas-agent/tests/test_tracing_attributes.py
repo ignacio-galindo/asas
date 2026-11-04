@@ -221,6 +221,8 @@ def test_the_langfuse_2x_client_takes_the_trace_fields_and_the_link():
     # Against the real 2.x client, its queue stubbed: the trace and the generation
     # bodies the SDK would send.
     langfuse = pytest.importorskip("langfuse")
+    if not hasattr(langfuse.Langfuse, "trace"):
+        pytest.skip("the installed Langfuse client is v3 or later (test_otel_tracing)")
     from unittest.mock import MagicMock
 
     real = langfuse.Langfuse(

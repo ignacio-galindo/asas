@@ -20,6 +20,8 @@ asas_agent/
                  every model call (imports the SDK; loaded on first use)
   tracing.py     LangfuseTracingProcessor: the SDK's run traces in Langfuse 2.x
                  (imports the SDK; loaded on first use)
+  otel_tracing.py  LangfuseOtelTracingProcessor: the same, over OpenTelemetry
+                 (Langfuse SDK v3+; imports the SDK; loaded on first use)
   seams.py       the Protocols a host fills: ToolDispatcher, AskHandler, SkillAware,
                  ContextRenderer, ReleaseStore
   loop.py        run_agent, instructions_for, described_tools, model_settings
@@ -85,17 +87,19 @@ change of model or of one word is a new id.
 
 ## Langfuse SDK v5
 
-`LangfuseTracingProcessor` writes through the Langfuse 2.x client (`trace`,
-`generation`, `span`), the one the self-hosted servers hosts run today accept. The
-v5 SDK is OpenTelemetry-native: a v5 processor would sit beside this one, not
-replace it, as another `TracingProcessor` (`LangfuseOtelTracingProcessor`, in
-its own extra) that opens OTel spans with the same mapping and the same reserved
-metadata keys, writes them as the OTel span attributes v5 defines for user, tags,
-version, release, prompt name and version and model (checked against v5 when it is
-built, not now), and takes `trace_id` from the SDK trace
-id (32 hex, as now). `TraceAttributes`, `release["source"]` and the run's context
-variable are SDK-free for that reason: a host chooses one processor and everything
-`run_agent` sends stays the same. It waits until the servers hosts run accept v5.
+Two processors, one mapping. `LangfuseTracingProcessor` writes through the
+Langfuse 2.x client (`trace`, `generation`, `span`); `LangfuseOtelTracingProcessor`
+(0.6.0, the `langfuse-otel` extra) writes through the SDK v3 and later, which is
+OpenTelemetry-native, and is what a v4 server in events-only ingestion mode needs
+(it refuses the 2.x events). Both read the same reserved metadata keys, the same
+`release["source"]` and the same run context variable, which is why those are
+SDK-free: a host chooses one processor and everything `run_agent` sends stays the
+same. The v3+ processor sets the trace's attributes with `propagate_attributes` in
+an OpenTelemetry context of the trace's own, attached only while it opens one of
+the trace's observations, so no span of the host's receives them, and imports
+Langfuse and OpenTelemetry only when a trace starts, so every exported name
+resolves whichever extra is installed. The 2.x processor goes when no host needs
+it.
 
 ## Tables
 

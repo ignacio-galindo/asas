@@ -5,6 +5,33 @@ Pre-1.0, a breaking change bumps the **minor**.
 
 Release procedure and the historical tag mapping: [`RELEASING.md`](../../RELEASING.md).
 
+## 0.6.0
+
+Traces a Langfuse v4 server keeps. A self-hosted Langfuse 4.73.0 in events-only
+ingestion mode refuses the 2.x client's `trace-create` and `generation-create`
+events (HTTP 207, dropped silently by the client), so a host on 0.5.0 sent traces
+nobody kept. Additive: the 2.x processor, the `langfuse` extra and everything
+`run_agent` sends are unchanged.
+
+- **`LangfuseOtelTracingProcessor`** (`asas_agent.otel_tracing`), the processor
+  DESIGN.md planned beside the 2.x one: the Langfuse Python SDK v3 and later
+  (OpenTelemetry; built and tested on 5.1). Same mapping (trace id = the SDK's
+  32 hex, workflow name, group id as session, generations with model, messages,
+  usage and the prompt link, tool calls with arguments and result, errors as the
+  `ERROR` level), same reserved metadata keys, same `mask` contract. Every
+  observation carries the trace's user, session, tags, version, name and metadata
+  through `langfuse.propagate_attributes` in a context of the trace's own, never
+  on a span of the host's; the release rides the metadata as `asas_release`
+  (v3+ has no per-trace release). Observations open when the SDK span starts and
+  close when it ends, and agent, function and guardrail spans are Langfuse
+  `agent`, `tool` and `guardrail` observations.
+- **The `langfuse-otel` extra** (`langfuse>=3,<6`). Choose it or `langfuse`, not
+  both. `LangfuseStore` works with either client (its three calls bind to both;
+  a test pins the v3+ signatures).
+- **Tests** export through a real client into OpenTelemetry's in-memory exporter;
+  the dev extra installs `langfuse>=3,<6` for them, and the one test that drives a
+  real 2.x client skips when the installed client is v3+.
+
 ## 0.5.0
 
 What Langfuse needs to find a run and the prompt version behind it, on the Langfuse
