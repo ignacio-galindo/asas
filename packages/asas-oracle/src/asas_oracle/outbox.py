@@ -48,6 +48,7 @@ from .errors import (
     OracleStateRefusedError,
     OracleUnavailableError,
     OracleUpstreamError,
+    OracleWrongAddressError,
 )
 
 
@@ -76,10 +77,15 @@ class Verdict:
 TRANSIENT_STATUSES = frozenset({408, 425, 429})
 
 #: The classes that mean the deployment, not the record, is refusing.
+#: ``OracleGatewayError`` is how an API gateway (AD Connect, say) not carrying
+#: an operation reaches here, including the plain-text 404 a gateway answers
+#: for a write it was never registered for: held, never failed, so the write
+#: resumes once the registration exists.
 ENVIRONMENT_BLOCKING: tuple[type[BaseException], ...] = (
     OracleNotConfiguredError,
     OracleAuthError,
     OracleGatewayError,
+    OracleWrongAddressError,
 )
 
 

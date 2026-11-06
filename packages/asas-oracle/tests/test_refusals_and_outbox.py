@@ -134,7 +134,7 @@ def test_an_ordinary_lifecycle_refusal_is_not_a_desync(client, oracle):
     [
         (REQUIRED, "value_required"),
         (TWO_INVALID, "value_invalid"),
-        (DUPLICATE, "duplicate_number"),
+        (DUPLICATE, "duplicate_requisition_number"),
         (NOT_ADJACENT, "state_not_adjacent"),
         (DESYNC, "lifecycle_desync"),
         (LOCKED, "record_locked"),
@@ -163,7 +163,7 @@ def test_an_unknown_refusal_is_none():
 def test_a_host_extends_the_catalogue_ahead_of_the_default():
     mine = KnownRefusal("our_rule", "A host's own reading.", codes=("IRC-1590142",))
     assert identify(REQUIRED, (mine, *FUSION_REFUSALS)).key == "our_rule"
-    assert identify(DUPLICATE, (mine, *FUSION_REFUSALS)).key == "duplicate_number"
+    assert identify(DUPLICATE, (mine, *FUSION_REFUSALS)).key == "duplicate_requisition_number"
 
 
 def test_catalogue_keys_are_unique():

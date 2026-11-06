@@ -17,6 +17,22 @@ about any product. Measured on a Fusion recruiting instance in October 2026.
   upstream error instead of `OracleAlreadyExistsError`, the one answer the
   read-back-and-recover path rests on. The number and the two phrases are
   now matched.
+- **Refusals through an API gateway (AD Connect) are read as the gateway's.**
+  On a gateway address (`/gateway/` in the path), a WRITE refused with a 405,
+  a 415, or a 404 that is not Fusion's own JSON error document now raises
+  `OracleGatewayError`; before, the 404 raised `OracleNotFoundError`, which an
+  outbox reads as "this record is gone" and fails the row, losing a write the
+  gateway simply was not registered to carry yet. A READ is the gateway's only
+  on a 405 or in the gateway's own words: a bare 404 on a read stays "no such
+  record", so one missing person does not look like an unregistered
+  operation. Fusion's own words (the lock, the lifecycle, the duplicate)
+  still win over the gateway's on every route. Direct connections are
+  unchanged.
+- **`OracleWrongAddressError`**: an HTML 404 page, which comes from a server in
+  front of Fusion's REST tier, means the base URL or version prefix is wrong,
+  not that a record is missing.
+- **One more lifecycle refusal**, IRC-1590385 ("The job application can't be
+  moved to the provided phase and state"), is an `OracleStateRefusedError`.
 - **`message_codes`**, and `OracleUpstreamError.message_codes`: Fusion's
   message numbers (`IRC-1590142`, `FND-2808`) read off a refusal, in order,
   each once. The number is the stable half of a Fusion error, and safe to log.
@@ -29,12 +45,13 @@ about any product. Measured on a Fusion recruiting instance in October 2026.
   ... field" refusal names, beside `refused_fields` for "a valid value".
 - **`identify` and `FUSION_REFUSALS`**: which refusal it was, as a stable key
   (`value_required`, `state_not_adjacent`, `position_full`, ...), matched by
-  message number first and by Fusion's words second, from a catalogue of 15
+  message number first and by Fusion's words second, from a catalogue of 16
   measured refusals a host can extend with its own entries.
 - **`asas_oracle.outbox`**: what a write outbox does with each failure.
   `classify(exc)` answers `transient`, `blocked` or `permanent` (and whether
   it is an outage that should stop the sweep) from the exception's type and
-  status; `backoff_s`, `budget_s`, and a fixed per-row `jitter_fraction` a
+  status (a gateway refusal and the wrong address are `blocked`: held, never
+  failed); `backoff_s`, `budget_s`, and a fixed per-row `jitter_fraction` a
   database can compute too (`jitter_sql`).
 - **`WriteAllowlist`**: a fail-closed allow-list for writes about people on a
   shared test pod, where a write can make Fusion notify a real person. Both

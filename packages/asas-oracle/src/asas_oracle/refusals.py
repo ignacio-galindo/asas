@@ -97,7 +97,7 @@ FUSION_REFUSALS: tuple[KnownRefusal, ...] = (
     ),
     # ── Recruiting's numbered messages (IRC) ───────────────────────────────
     KnownRefusal(
-        "duplicate_number",
+        "duplicate_requisition_number",
         "A record with that number exists already: on a retried create, the "
         "first attempt landed.",
         _RECRUITING,
@@ -118,6 +118,14 @@ FUSION_REFUSALS: tuple[KnownRefusal, ...] = (
         _RECRUITING,
         codes=("IRC-1590143",),
         markers=("enter a valid value for the",),
+    ),
+    KnownRefusal(
+        "application_move_refused",
+        "A job application cannot be moved to the phase and state asked for "
+        "(seen moving one out of a terminal stage such as rejected).",
+        _RECRUITING,
+        codes=("IRC-1590385",),
+        markers=("be moved to the provided phase and state",),
     ),
     KnownRefusal(
         "action_not_allowed",

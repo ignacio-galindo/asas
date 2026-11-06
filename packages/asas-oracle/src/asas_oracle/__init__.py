@@ -94,6 +94,7 @@ from .errors import (
     OracleQueryError,
     OracleUnavailableError,
     OracleUpstreamError,
+    OracleWrongAddressError,
     transport_detail,
 )
 from .outbox import (
@@ -242,6 +243,7 @@ __all__ = [
     "OracleSettings",
     "OracleUnavailableError",
     "OracleUpstreamError",
+    "OracleWrongAddressError",
     "POSITION_BUDGET_KIND",
     "Person",
     "Position",

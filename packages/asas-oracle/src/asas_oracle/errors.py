@@ -224,6 +224,21 @@ class OracleGatewayError(OracleUpstreamError):
     """
 
 
+class OracleWrongAddressError(OracleUpstreamError):
+    """A server IN FRONT of Fusion's REST tier answered an HTML 404 page.
+
+    Fusion's own 404 is a JSON error document or plain text; an HTML page comes
+    from the web server or load balancer before any resource was looked up, so
+    it means the base URL or the version prefix is wrong for this deployment,
+    and EVERY call will fail the same way. A configuration fault, never a
+    missing record: a caller with an outbox should hold its rows, not fail them.
+    """
+
+    @property
+    def is_transient(self) -> bool:
+        return False
+
+
 class OracleUnavailableError(OracleUpstreamError):
     """The client's circuit breaker is open: this process saw Oracle fail
     several times in a row and is not asking again until the cooldown ends.

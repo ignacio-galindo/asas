@@ -57,8 +57,10 @@ from .errors import (
     OracleNotFoundError,
     OracleUnavailableError,
     OracleUpstreamError,
+    OracleWrongAddressError,
     transport_detail,
 )
+from .routing import is_gateway
 from .settings import OracleSettings
 from .upstream import BreakerPolicy, RequestEvent, UpstreamHealth
 
@@ -105,6 +107,9 @@ _LIFECYCLE_MARKERS = (
     "not adjacent to current state",
     "differs from lifecycle instance",
     "cannot be moved further",
+    # IRC-1590385, moving an application out of a terminal stage: "The job
+    # application can't be moved to the provided phase and state."
+    "be moved to the provided phase and state",
     "target state is not available",
     "cannot move directly into new phase terminal state",
 )
@@ -129,6 +134,55 @@ _GATEWAY_MARKERS = (
     "no matching resource",
     "resource not found",
 )
+
+
+#: The gateway's words that Fusion's own never carry. "resource not found" is
+#: left out: through a gateway Fusion's errors can arrive as plain text, and a
+#: 404 saying it may be Fusion's "no such record".
+_GATEWAY_ONLY_MARKERS = tuple(m for m in _GATEWAY_MARKERS if m != "resource not found")
+
+_WRITE_METHODS = frozenset({"POST", "PATCH", "PUT", "DELETE"})
+
+
+def _reads_as_oracle_error_document(text: str, content_type: str) -> bool:
+    """Fusion's own REST error document (``application/vnd.oracle.adf.error+json``
+    and its plain-JSON twin): a JSON object carrying ``o:errorDetails`` or
+    ``o:errorCode``. A gateway never answers in that shape, so it is how a 404
+    Fusion wrote ("no such record") is told from one the gateway wrote ("no
+    such operation")."""
+    if "json" not in (content_type or "").lower():
+        return False
+    try:
+        body = json.loads(text)
+    except ValueError:
+        return False
+    return isinstance(body, dict) and ("o:errorDetails" in body or "o:errorCode" in body)
+
+
+def _gateway_refused(method: str, code: int, text: str, content_type: str) -> bool:
+    """Whether a refusal on a GATEWAY route is the gateway's own, i.e. the
+    operation is not carried there, rather than Fusion's about a record.
+
+    Writes and reads are judged differently, on purpose:
+
+    - a WRITE is the gateway's on a 405 or a 415 (the media type is part of a
+      registration), or on a 404 that is not Fusion's error document. Through
+      a gateway Fusion's errors can arrive as plain text, so a plain-text 404
+      is ambiguous there, and is read as the gateway's: holding a row costs
+      one recheck, failing a row the gateway never forwarded loses the write.
+    - a READ is the gateway's only on a 405 or in the gateway's own words.
+      A bare 404 stays Fusion's "no such record", because reading it as the
+      gateway's would stop every caller on one missing person.
+    """
+    if _reads_as_oracle_error_document(text, content_type):
+        return False
+    if method in _WRITE_METHODS:
+        # By STATUS only here. A write refusal in the gateway's words but
+        # another status (the 500 "Transport protocol not supported") is
+        # caught by the marker test after Fusion's own lock, lifecycle and
+        # duplicate tests, so Fusion's words always win over the gateway's.
+        return code in (404, 405, 415)
+    return code == 405 or _matches(text, _GATEWAY_ONLY_MARKERS)
 
 
 def _matches(text: str, markers: tuple[str, ...]) -> bool:
@@ -227,6 +281,9 @@ class OracleFusionClient:
         request with a :class:`RequestEvent`, for a host's own metrics or
         tracing (an exception in it is logged and ignored)."""
         self._settings = settings
+        #: Whether the address is an API gateway's (``/gateway/`` in its path):
+        #: refusals are read differently there (see `_gateway_refused`).
+        self._gateway = is_gateway(settings.base_url)
         self._auth: Auth = auth if auth is not None else settings.auth()
         self._on_request = on_request
         self._borrowed = http
@@ -398,11 +455,19 @@ class OracleFusionClient:
             text = response.text[:500]
             logger.warning("oracle %s %s answered %s", method, path, code)
             logger.debug("oracle %s %s body: %s", method, path, text)
+            content_type = response.headers.get("content-type", "")
             kind: type[OracleUpstreamError] = OracleUpstreamError
-            if code == 404:
-                kind = OracleNotFoundError
-            elif code in (401, 403):
+            if code in (401, 403):
                 kind = OracleAuthError
+            # A GATEWAY route refusing an operation it does not carry, before
+            # the 404 test: on that route a 404 can be the gateway's "no such
+            # operation" rather than Fusion's "no such record".
+            elif self._gateway and _gateway_refused(method, code, text, content_type):
+                kind = OracleGatewayError
+            elif code == 404 and "html" in content_type.lower():
+                kind = OracleWrongAddressError
+            elif code == 404:
+                kind = OracleNotFoundError
             elif method == "POST" and code in (400, 409) and _reads_as_duplicate(text):
                 kind = OracleAlreadyExistsError
             elif code == 400 and _matches(text, _LOCK_MARKERS):
@@ -429,7 +494,7 @@ class OracleFusionClient:
                 path=path,
                 retry_after_seconds=_retry_after(response) if code in (429, 503) else None,
                 body=text,
-                content_type=response.headers.get("content-type", ""),
+                content_type=content_type,
             )
         return response
 
