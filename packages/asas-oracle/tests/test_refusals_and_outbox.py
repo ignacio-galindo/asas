@@ -10,7 +10,6 @@ from uuid import UUID
 
 import httpx
 import pytest
-
 from asas_oracle import (
     FUSION_REFUSALS,
     KnownRefusal,
@@ -36,7 +35,6 @@ from asas_oracle import (
     message_codes,
     missing_fields,
 )
-
 
 REQUIRED = "You need to enter a value for the Candidate Selection Process field. (IRC-1590142)"
 TWO_INVALID = (
