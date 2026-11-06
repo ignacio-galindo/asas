@@ -49,6 +49,7 @@ from .errors import (
     OracleAlreadyExistsError,
     OracleGatewayError,
     OracleLockedError,
+    OracleLifecycleDesyncError,
     OraclePhaseEntryRequiredError,
     OracleStateRefusedError,
     OracleAuthError,
@@ -72,7 +73,20 @@ _ADF_ITEM = "application/vnd.oracle.adf.resourceitem+json"
 #: The words Oracle's duplicate-key refusal is known to use. Matched only to
 #: choose an error CLASS, never shown, and kept loose: a refusal we do not
 #: recognise falls through to the generic upstream error, the fail-closed side.
-_DUPLICATE_MARKERS = ("already exists", "duplicate", "unique")
+#:
+#: Fusion Recruiting's own duplicate says none of the generic words: "You need
+#: to enter a different number. There's already requisition number <n>.
+#: (IRC-1590053)". Its NUMBER is the reliable half (prose is translated and
+#: reworded, a message number is not), so it is listed, and matched as text
+#: like the rest. Measured on a Fusion recruiting instance.
+_DUPLICATE_MARKERS = (
+    "irc-1590053",
+    "already requisition number",
+    "enter a different number",
+    "already exists",
+    "duplicate",
+    "unique",
+)
 
 
 #: Fusion's row-lock refusal: "Failed to lock the record in table ... another
@@ -99,6 +113,9 @@ _LIFECYCLE_MARKERS = (
 #: target phase at a non-terminal state first. Tested BEFORE the rest, being a
 #: special case of them.
 _PHASE_ENTRY_MARKER = "cannot move directly into new phase terminal state"
+
+#: The record and its lifecycle instance disagree; final, and needs a person.
+_DESYNC_MARKER = "differs from lifecycle instance"
 
 #: What an API GATEWAY says when it refuses before Oracle is reached at all:
 #: an operation it does not carry, a transport it was not registered for, a
@@ -395,6 +412,8 @@ class OracleFusionClient:
             # the gateway markers are loose enough to claim them.
             elif code in (400, 409) and _PHASE_ENTRY_MARKER in text.lower():
                 kind = OraclePhaseEntryRequiredError
+            elif code in (400, 409) and _DESYNC_MARKER in text.lower():
+                kind = OracleLifecycleDesyncError
             elif code in (400, 409) and _matches(text, _LIFECYCLE_MARKERS):
                 kind = OracleStateRefusedError
             # LAST of the prose tests, so a refusal Oracle itself made is

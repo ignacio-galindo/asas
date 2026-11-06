@@ -75,8 +75,12 @@ from .cache import (
 from .check import REFERENCE_PROBES, CheckResult, Probe, check, load_manifest
 from .client import MAX_PAGE_SIZE, CollectionPage, OracleFusionClient
 from .echo import differences, stored_of
+from .allowlist import WriteAllowlist
 from .errors import (
+    message_codes,
+    missing_fields,
     refused_fields,
+    OracleLifecycleDesyncError,
     OracleAlreadyExistsError,
     OracleAuthError,
     OracleConfigError,
@@ -92,6 +96,19 @@ from .errors import (
     OracleUpstreamError,
     transport_detail,
 )
+from .outbox import (
+    ENVIRONMENT_BLOCKING,
+    JITTER_SPREAD,
+    TRANSIENT_STATUSES,
+    Verdict,
+    WriteOutcome,
+    backoff_s,
+    budget_s,
+    classify,
+    jitter_fraction,
+    jitter_sql,
+)
+from .refusals import FUSION_REFUSALS, KnownRefusal, identify
 from .lookups import (
     DEFAULT_CONCURRENCY,
     DIRECTORY_KIND,
@@ -154,9 +171,26 @@ from .upstream import (
 #: served to a v2 reader.
 REST_FRAMEWORK_V2: dict[str, str] = {"REST-Framework-Version": "2"}
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 __all__ = [
+    "ENVIRONMENT_BLOCKING",
+    "FUSION_REFUSALS",
+    "JITTER_SPREAD",
+    "KnownRefusal",
+    "OracleLifecycleDesyncError",
+    "TRANSIENT_STATUSES",
+    "Verdict",
+    "WriteAllowlist",
+    "WriteOutcome",
+    "backoff_s",
+    "budget_s",
+    "classify",
+    "identify",
+    "jitter_fraction",
+    "jitter_sql",
+    "message_codes",
+    "missing_fields",
     "INSTALLED_FLAGS",
     "LANGUAGES_RESOURCE",
     "common_lookup",

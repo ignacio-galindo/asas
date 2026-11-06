@@ -11,6 +11,28 @@ from __future__ import annotations
 
 import re
 
+#: Fusion's message numbers: an application short name, a dash, a number
+#: (IRC-1590053, FND-2808, ...). Upper-case in Fusion's own text, which is
+#: what keeps ``CurrentPhaseId=5`` and the like from reading as one.
+_MESSAGE_CODE = re.compile(r"\b([A-Z][A-Z0-9]{1,7}-\d{3,9})\b")
+
+
+def message_codes(text: str | None) -> tuple[str, ...]:
+    """Fusion's message numbers in a refusal, in order, each once.
+
+    The NUMBER is the part of a Fusion error a caller can rely on: the prose
+    around it is translated with the user's language and reworded between
+    releases, the number is not. It names an entry in Fusion's message
+    dictionary (``GET /fscmRestApi/resources/<version>/messages``), where the
+    cause and the user action live. Safe to log or return, unlike the body it
+    comes from. A lifecycle or framework exception (``PhaseStepProcessor...``)
+    carries none, and answers an empty tuple."""
+    seen: list[str] = []
+    for code in _MESSAGE_CODE.findall(text or ""):
+        if code not in seen:
+            seen.append(code)
+    return tuple(seen[:10])
+
 
 class OracleError(Exception):
     """Base class for everything this package raises."""
@@ -78,6 +100,13 @@ class OracleUpstreamError(OracleError):
         #: response. Truncated for that reason as much as for size.
         self.body = body
         self.content_type = content_type
+
+    @property
+    def message_codes(self) -> tuple[str, ...]:
+        """Fusion's message numbers in this refusal (see `message_codes`):
+        read off the body, which never leaves the exception, so a host can
+        branch on, log or report WHICH refusal it was."""
+        return message_codes(self.body)
 
     @property
     def is_transient(self) -> bool:
@@ -172,6 +201,19 @@ class OraclePhaseEntryRequiredError(OracleStateRefusedError):
     """
 
 
+class OracleLifecycleDesyncError(OracleStateRefusedError):
+    """The record and Fusion's lifecycle instance disagree on its state.
+
+    "Context current state differs from lifecycle instance. Context
+    CurrentStateId==27, Lifecycle CurrentStateId==37." EVERY status write on
+    the record is refused until a person walks it back to the lifecycle's
+    state with the record's own actions (reopen, suspend), so it is final like
+    its parent, and named apart because the fix is a person's, in Fusion, and
+    not a different move. Seen twice on a recruiting instance after a
+    suspended requisition was posted.
+    """
+
+
 class OracleGatewayError(OracleUpstreamError):
     """The API gateway refused before Oracle was reached at all.
 
@@ -223,6 +265,23 @@ def refused_fields(body: str) -> list[str]:
     "External Application Flow"]``). ``[]`` for a refusal that names none."""
     seen: list[str] = []
     for match in _REFUSED_FIELD.finditer(" ".join((body or "").split())):
+        label = match.group(1).strip()
+        if label and label not in seen:
+            seen.append(label[:80])
+    return seen[:10]
+
+
+#: Fusion's wording for a REQUIRED value that was not sent (IRC-1590142):
+#: "You need to enter a value for the Candidate Selection Process field."
+#: Distinct from the refused-value wording, which says "a VALID value".
+_MISSING_FIELD = re.compile(r"enter a value for the (.+?) field", re.IGNORECASE)
+
+
+def missing_fields(body: str) -> list[str]:
+    """The field LABELS a Fusion "you need to enter a value" refusal names, in
+    order, each once. Labels only, never the message (see `refused_fields`)."""
+    seen: list[str] = []
+    for match in _MISSING_FIELD.finditer(" ".join((body or "").split())):
         label = match.group(1).strip()
         if label and label not in seen:
             seen.append(label[:80])

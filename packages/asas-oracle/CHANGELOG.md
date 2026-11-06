@@ -5,6 +5,41 @@ Pre-1.0, a breaking change bumps the **minor**.
 
 Release procedure and the historical tag mapping: [`RELEASING.md`](../../RELEASING.md).
 
+## 0.3.0 (unreleased)
+
+What a host that WRITES to Fusion had to grow beside the client, none of it
+about any product. Measured on a Fusion recruiting instance in October 2026.
+
+- **Fusion's real duplicate is recognised.** Fusion Recruiting refuses a taken
+  number with "You need to enter a different number. There's already
+  requisition number <n>. (IRC-1590053)", which matched none of the generic
+  words, so a retried create whose first attempt had landed raised the plain
+  upstream error instead of `OracleAlreadyExistsError`, the one answer the
+  read-back-and-recover path rests on. The number and the two phrases are
+  now matched.
+- **`message_codes`**, and `OracleUpstreamError.message_codes`: Fusion's
+  message numbers (`IRC-1590142`, `FND-2808`) read off a refusal, in order,
+  each once. The number is the stable half of a Fusion error, and safe to log.
+- **`OracleLifecycleDesyncError`**, a subclass of `OracleStateRefusedError`, for
+  "Context current state differs from lifecycle instance": the record and its
+  lifecycle disagree, and every status write is refused until a person walks
+  the record back in Fusion. Final like its parent, named apart because the
+  fix is a person's.
+- **`missing_fields`**: the field labels a "you need to enter a value for the
+  ... field" refusal names, beside `refused_fields` for "a valid value".
+- **`identify` and `FUSION_REFUSALS`**: which refusal it was, as a stable key
+  (`value_required`, `state_not_adjacent`, `position_full`, ...), matched by
+  message number first and by Fusion's words second, from a catalogue of 15
+  measured refusals a host can extend with its own entries.
+- **`asas_oracle.outbox`**: what a write outbox does with each failure.
+  `classify(exc)` answers `transient`, `blocked` or `permanent` (and whether
+  it is an outage that should stop the sweep) from the exception's type and
+  status; `backoff_s`, `budget_s`, and a fixed per-row `jitter_fraction` a
+  database can compute too (`jitter_sql`).
+- **`WriteAllowlist`**: a fail-closed allow-list for writes about people on a
+  shared test pod, where a write can make Fusion notify a real person. Both
+  the address and the record must match; an empty list allows nothing.
+
 ## 0.2.0 (unreleased)
 
 Reads and helpers a host had grown beside the client, none of them about any
