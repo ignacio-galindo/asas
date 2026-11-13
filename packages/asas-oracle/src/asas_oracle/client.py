@@ -214,6 +214,13 @@ def _retry_after(response: httpx.Response) -> int | None:
     return max(0, int((when - datetime.now(timezone.utc)).total_seconds()))
 
 
+#: The response header Oracle Integration Cloud sets on every call it routes,
+#: naming the exact OIC invocation. Surfaced on ``RequestEvent.instance_id``
+#: and on ``OracleUpstreamError.instance_id`` so a host can log it and trace a
+#: call back to its OIC run. Absent on a direct-to-Fusion call.
+ICS_INSTANCE_ID_HEADER = "X-Oracle-Ics-Instance-Id"
+
+
 def _route_headers(route: str, method: str, body: object) -> dict[str, str]:
     """The headers the ROUTE itself needs, before auth and before the
     caller's own.
@@ -445,7 +452,17 @@ class OracleFusionClient:
                 raise
             elapsed = _ms(started)
             fault = health.record(method, resource, elapsed, status=response.status_code)
-            self._emit(RequestEvent(method, resource, path, response.status_code, elapsed, fault))
+            self._emit(
+                RequestEvent(
+                    method,
+                    resource,
+                    path,
+                    response.status_code,
+                    elapsed,
+                    fault,
+                    instance_id=response.headers.get(ICS_INSTANCE_ID_HEADER) or None,
+                )
+            )
             if response.status_code == 401 and attempt == 1 and self._auth.invalidate():
                 continue
             break
@@ -495,6 +512,7 @@ class OracleFusionClient:
                 retry_after_seconds=_retry_after(response) if code in (429, 503) else None,
                 body=text,
                 content_type=content_type,
+                instance_id=response.headers.get(ICS_INSTANCE_ID_HEADER) or None,
             )
         return response
 

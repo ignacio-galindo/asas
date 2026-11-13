@@ -73,7 +73,7 @@ from .cache import (
     reference_ttls,
 )
 from .check import REFERENCE_PROBES, CheckResult, Probe, check, load_manifest
-from .client import MAX_PAGE_SIZE, CollectionPage, OracleFusionClient
+from .client import ICS_INSTANCE_ID_HEADER, MAX_PAGE_SIZE, CollectionPage, OracleFusionClient
 from .echo import differences, stored_of
 from .allowlist import WriteAllowlist
 from .errors import (
@@ -219,6 +219,7 @@ __all__ = [
     "DIRECTORY_KIND",
     "LOOKUP_TTL_SECONDS",
     "LookupStore",
+    "ICS_INSTANCE_ID_HEADER",
     "MAX_PAGE_SIZE",
     "MemoryCache",
     "MemoryLookupStore",
