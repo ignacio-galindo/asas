@@ -10,6 +10,14 @@ Release procedure and the historical tag mapping: [`RELEASING.md`](../../RELEASI
 What a host that WRITES to Fusion had to grow beside the client, none of it
 about any product. Measured on a Fusion recruiting instance in October 2026.
 
+- **The OIC invocation id is surfaced for logging.** Oracle Integration
+  Cloud stamps `X-Oracle-Ics-Instance-Id` on every call it routes (a gateway
+  address; a direct-to-Fusion call has none). A host had no view of the
+  response and so no way to log it, which is what ties one of our calls to the
+  exact OIC run when AD Connect has to trace a failure. It now rides on
+  `RequestEvent.instance_id` for a call that answered, and on
+  `OracleUpstreamError.instance_id` for one that failed; the header name is
+  exported as `ICS_INSTANCE_ID_HEADER`. Absent or empty reads as `None`.
 - **Fusion's real duplicate is recognised.** Fusion Recruiting refuses a taken
   number with "You need to enter a different number. There's already
   requisition number <n>. (IRC-1590053)", which matched none of the generic

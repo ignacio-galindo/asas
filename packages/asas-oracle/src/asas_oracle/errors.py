@@ -75,11 +75,18 @@ class OracleUpstreamError(OracleError):
         retry_after_seconds: int | None = None,
         body: str = "",
         content_type: str = "",
+        instance_id: str | None = None,
     ) -> None:
         super().__init__(message)
         self.status = status
         self.method = method
         self.path = path
+        #: The OIC invocation id from the response's ``X-Oracle-Ics-Instance-Id``
+        #: header, or ``None`` when the call went direct to Fusion or no
+        #: response arrived. Safe to log: it is an Oracle Integration Cloud
+        #: correlation id, not tenant data, so a host can record it to tie a
+        #: refusal back to its exact OIC run.
+        self.instance_id = instance_id
         #: What the upstream asked a caller to wait (``Retry-After`` on a 429 or
         #: a 503), or ``None`` when it said nothing.
         self.retry_after_seconds = retry_after_seconds

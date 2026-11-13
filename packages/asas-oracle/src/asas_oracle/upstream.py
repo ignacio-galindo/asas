@@ -190,6 +190,12 @@ class RequestEvent:
     elapsed_ms: float
     fault: bool
     refused: bool = False
+    #: The OIC invocation id from the response's ``X-Oracle-Ics-Instance-Id``
+    #: header, when one arrived (an integration through Oracle Integration
+    #: Cloud sets it; a direct-to-Fusion call does not), so a host can log the
+    #: id that ties a call to its exact OIC run. ``None`` when no response came
+    #: back (a transport failure or a breaker refusal) or the header was absent.
+    instance_id: str | None = None
 
 
 #: The breaker every connection failure also counts against.
