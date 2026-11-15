@@ -38,7 +38,9 @@ class OracleSettings:
     ``Authorization`` header, so they are refused together; a gateway key
     combines with either. ``extra_headers`` ride on every
     request (``REST-Framework-Version``, which changes how Fusion shapes some
-    answers, or a header a gateway asks for).
+    answers, or a header a gateway asks for). ``correlation_header`` names the
+    header the client's ``correlation_id`` hook rides as (``X-Correlation-Id``
+    by default; empty sends none).
 
     ``max_connections`` bounds the pool the client owns (the TLS handshake to a
     gateway is the dear part, so connections are kept warm), and
@@ -58,6 +60,9 @@ class OracleSettings:
     oauth_client_secret: str = ""
     oauth_scope: str = ""
     extra_headers: Mapping[str, str] = field(default_factory=dict)
+    #: The header a host's per-request correlation id rides as, when the
+    #: client is given a ``correlation_id`` hook. Empty sends none.
+    correlation_header: str = "X-Correlation-Id"
     #: Which way this deployment reaches Fusion (see :mod:`asas_oracle.routing`).
     #: It is CONFIGURATION and never inferred from the address, so an address
     #: that contradicts it is a fault to report rather than a shape to follow.

@@ -282,17 +282,27 @@ class OracleFusionClient:
         breaker: BreakerPolicy | None = None,
         auth: Auth | None = None,
         on_request: Callable[[RequestEvent], Any] | None = None,
+        correlation_id: Callable[[], str | None] | None = None,
     ) -> None:
         """``auth`` replaces the credential the settings describe
         (:meth:`OracleSettings.auth`); ``on_request`` is called once per
         request with a :class:`RequestEvent`, for a host's own metrics or
-        tracing (an exception in it is logged and ignored)."""
+        tracing (an exception in it is logged and ignored).
+
+        ``correlation_id`` is asked once per request for the host's id of the
+        work in hand (its request id, a background run's id); the answer rides
+        as ``settings.correlation_header`` so an integration layer (an OIC
+        business identifier, a gateway log) and the host's own logs name the
+        same call. None or empty sends nothing, a header the call passes
+        itself wins, and an exception in it is logged and ignored. It never
+        enters a cache key."""
         self._settings = settings
         #: Whether the address is an API gateway's (``/gateway/`` in its path):
         #: refusals are read differently there (see `_gateway_refused`).
         self._gateway = is_gateway(settings.base_url)
         self._auth: Auth = auth if auth is not None else settings.auth()
         self._on_request = on_request
+        self._correlation_id = correlation_id
         self._borrowed = http
         self._owned: httpx.AsyncClient | None = None
         self._cache: Cache = cache if cache is not None else MemoryCache()
@@ -328,6 +338,18 @@ class OracleFusionClient:
         or two deployments sharing one Redis share those too.
         """
         return self._scope
+
+    def _correlation_headers(self) -> dict[str, str]:
+        """The host's correlation id as a header, or nothing."""
+        header = self._settings.correlation_header
+        if self._correlation_id is None or not header:
+            return {}
+        try:
+            value = self._correlation_id()
+        except Exception:  # noqa: BLE001 - a host's hook never costs the call
+            logger.warning("oracle correlation_id hook raised", exc_info=True)
+            return {}
+        return {header: str(value)} if value else {}
 
     @property
     def base_url(self) -> str:
@@ -413,6 +435,7 @@ class OracleFusionClient:
                     **_route_headers(s.route, method, json_body),
                     **s.extra_headers,
                     **await self._auth.headers(http),
+                    **self._correlation_headers(),
                     **(headers or {}),
                 }
                 response = await http.request(

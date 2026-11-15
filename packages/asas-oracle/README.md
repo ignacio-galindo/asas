@@ -151,6 +151,13 @@ and resource the calls, faults, average and worst latency.
 `on_request=` is called once per request with a `RequestEvent(method,
 resource, path, status, elapsed_ms, fault, refused)`, for your own metrics or
 tracing (OpenTelemetry, Prometheus); an exception in it is logged and ignored.
+`correlation_id=` is asked once per request for your id of the work in hand
+(the request's correlation id, a background run's id) and sends it as
+`settings.correlation_header` (`X-Correlation-Id` by default, empty sends
+none), so an integration layer in front of Fusion (an OIC business
+identifier, a gateway log) names the same call your logs do. None sends
+nothing, a header the call passes wins, it never enters a cache key, and an
+exception in it is logged and ignored.
 `count_calls()` counts the Oracle requests made inside a block, which is how a
 host notices a request path that has started reaching Oracle (cache hits are
 not calls):
