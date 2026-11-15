@@ -10,6 +10,15 @@ Release procedure and the historical tag mapping: [`RELEASING.md`](../../RELEASI
 What a host that WRITES to Fusion had to grow beside the client, none of it
 about any product. Measured on a Fusion recruiting instance in October 2026.
 
+- **A host's correlation id rides every request.** `OracleFusionClient(...,
+  correlation_id=callable)` is asked once per request and its answer is sent
+  as `OracleSettings.correlation_header` (`X-Correlation-Id` by default; empty
+  sends none). An integration layer in front of Fusion can then use it as a
+  business identifier (an OIC tracking field, a gateway log) and name the same
+  call the host's logs do. None or empty sends nothing, a header the call
+  passes itself wins, an exception in the hook is logged and ignored, and the
+  id never enters a cache key, so reads stay shared. Without the hook nothing
+  changes.
 - **The OIC invocation id is surfaced for logging.** Oracle Integration
   Cloud stamps `X-Oracle-Ics-Instance-Id` on every call it routes (a gateway
   address; a direct-to-Fusion call has none). A host had no view of the
