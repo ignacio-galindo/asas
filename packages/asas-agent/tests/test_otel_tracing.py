@@ -392,3 +392,52 @@ def test_a_responses_api_generation_is_masked():
     assert attribute(generation, "langfuse.observation.input") == "[masked]"
     assert attribute(generation, "langfuse.observation.output") == "[masked]"
     assert "secret" not in repr([dict(s.attributes) for s in w.spans()])
+
+
+# -- the trace's own input and output (0.6.2) ---------------------------------
+
+
+def test_the_trace_shows_the_runs_first_input_and_last_answer(wire):
+    # Langfuse shows the root observation's input and output as the trace's own.
+    from agents.tracing import response_span
+
+    with trace("my-flow", trace_id=TRACE_ID):
+        with agent_span(name="assistant"):
+            with response_span(response=_answered('{"draft": 1}')) as span:
+                span.span_data.input = [{"role": "user", "content": "the case"}]
+            with function_span(name="read", input='{"id": 1}', output="ok"):
+                pass
+            with response_span(response=_answered('{"draft": 2}')) as span:
+                span.span_data.input = [{"role": "user", "content": "tool said ok"}]
+    root = wire.named("my-flow")
+    assert attribute(root, "langfuse.observation.input") == [
+        {"role": "system", "content": "Write the pack."},
+        {"role": "user", "content": "the case"},
+    ]
+    assert attribute(root, "langfuse.observation.output") == {"draft": 2}
+
+
+def test_a_trace_without_content_keeps_an_empty_root(wire):
+    # Sensitive data off: the response id is no answer, the root stays empty.
+    from agents.tracing import response_span
+
+    with trace("my-flow", trace_id=TRACE_ID):
+        with response_span() as span:
+            span.span_data._response_id = "resp_9"
+    root = wire.named("my-flow")
+    assert attribute(root, "langfuse.observation.input") is None
+    assert attribute(root, "langfuse.observation.output") is None
+
+
+def test_the_traces_input_and_output_are_masked():
+    w = Wire()
+    set_trace_processors(
+        [LangfuseOtelTracingProcessor(w.client, mask=lambda *, data: "[masked]")]
+    )
+    try:
+        _response_flow(_answered("secret answer"), "secret input")
+    finally:
+        set_trace_processors([])
+    root = w.named("my-flow")
+    assert attribute(root, "langfuse.observation.input") == "[masked]"
+    assert attribute(root, "langfuse.observation.output") == "[masked]"

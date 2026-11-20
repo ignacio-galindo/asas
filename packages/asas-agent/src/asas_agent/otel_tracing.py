@@ -25,6 +25,9 @@ one processor and nothing ``run_agent`` sends changes:
   model, the input, the output and the token usage; inside ``run_agent`` it is
   linked to the Langfuse prompt version the release was read from, and the run's
   model names a generation whose span names none (the Responses API's);
+* the root observation, which Langfuse shows as the trace itself, gets the run's
+  input and answer when the trace ends: the first model call's input and the last
+  model call's output, as those generations sent them (masked);
 * an ``agent``, ``function`` or ``guardrail`` span becomes a Langfuse agent,
   tool or guardrail observation, every other span a Langfuse span, named by its
   kind and name, with its data as input; a tool call keeps its arguments and
@@ -105,6 +108,10 @@ OBSERVATION_TYPES = {
 class _OpenTrace:
     context: Any  # the OpenTelemetry context the trace's attributes live in
     root: Any  # the root observation
+    # The run's input and answer, masked, for the root (and so the trace) to show:
+    # the first model call's input and the last model call's output.
+    input: Any = None
+    output: Any = None
 
 
 def _clip(value: Any) -> str:
@@ -215,6 +222,22 @@ class LangfuseOtelTracingProcessor(TracingProcessor):
             opened = self._traces.pop(langfuse_id(trace.trace_id) or "", None)
         if opened is not None:
             try:
+                # Langfuse shows the root observation's input and output as the
+                # trace's own: without these the trace reads null / undefined.
+                io = {
+                    k: v
+                    for k, v in (("input", opened.input), ("output", opened.output))
+                    if v is not None
+                }
+                if io:
+                    opened.root.update(**io)
+            except Exception:  # noqa: BLE001 - tracing must never fail the run
+                log.warning(
+                    "asas_agent.otel_tracing: could not write trace %s input/output",
+                    trace.trace_id,
+                    exc_info=True,
+                )
+            try:
                 opened.root.end()
             except Exception:  # noqa: BLE001 - tracing must never fail the run
                 log.warning(
@@ -263,6 +286,8 @@ class LangfuseOtelTracingProcessor(TracingProcessor):
                 if kind in GENERATION_KINDS
                 else self._span(kind, span_data)
             )
+            if kind in GENERATION_KINDS:
+                self._remember_io(span.trace_id, fields, span_data)
             error = data.get("error")
             if error:
                 fields["level"] = "ERROR"
@@ -281,6 +306,24 @@ class LangfuseOtelTracingProcessor(TracingProcessor):
                 observation.end()
             except Exception:  # noqa: BLE001
                 log.debug("asas_agent.otel_tracing: could not end span", exc_info=True)
+
+    def _remember_io(
+        self, trace_id: str | None, fields: dict[str, Any], span_data: dict[str, Any]
+    ) -> None:
+        """Keep a model call's (already masked) input and output for its trace's
+        root: the first input the run sent, the last answer it got. An output that
+        is only the response id (sensitive data off) is no answer and is skipped."""
+        given, answer = fields.get("input"), fields.get("output")
+        if answer is not None and answer == {"response_id": span_data.get("response_id")}:
+            answer = None
+        with self._lock:
+            opened = self._traces.get(langfuse_id(trace_id) or "")
+            if opened is None:
+                return
+            if opened.input is None and given is not None:
+                opened.input = given
+            if answer is not None:
+                opened.output = answer
 
     def _generation(
         self, kind: str, span_data: dict[str, Any], raw: Any = None

@@ -5,6 +5,12 @@ Pre-1.0, a breaking change bumps the **minor**.
 
 Release procedure and the historical tag mapping: [`RELEASING.md`](../../RELEASING.md).
 
+## 0.6.2
+
+A trace shows its run's input and answer. Langfuse shows the root observation's input and output as the trace's own, and the OpenTelemetry processor opened the root empty and closed it empty, so every trace read `null` / `undefined` at the top even when its model calls kept their content. Fix only: nothing a host configures changes.
+
+- **`LangfuseOtelTracingProcessor`** writes onto the root, when the trace ends, the first model call's input and the last model call's output, the values its generations already sent (masked by the same `mask`). An output that is only `{"response_id": ...}` (a run that keeps no sensitive data) is no answer: such a trace's root stays empty, as before.
+
 ## 0.6.1
 
 A Responses API model call reaches Langfuse with its input and output. `ResponseSpanData.export()` sends the response id, the usage and the type alone, so both processors wrote such a generation with no input and `{"response_id": ...}` as its output, even on a run that keeps sensitive data. Fix only: nothing a host configures changes.
